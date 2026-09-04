@@ -1,0 +1,90 @@
+{
+  "balance": 581.67,
+  "inventory": [
+    {
+      "name": "XM1014 | Irezumi",
+      "rarity": "Mil-Spec",
+      "color": "blue",
+      "is_st": false,
+      "quality": "Battle-Scarred",
+      "case_name": "Kilowatt Case",
+      "wear_float": 0.5665,
+      "base_price": 2.0
+    },
+    {
+      "name": "MAC-10 | Light Box",
+      "rarity": "Mil-Spec",
+      "color": "blue",
+      "is_st": false,
+      "quality": "Field-Tested",
+      "case_name": "Kilowatt Case",
+      "wear_float": 0.1662,
+      "base_price": 2.0
+    },
+    {
+      "name": "SSG 08 | Dezastre",
+      "rarity": "Mil-Spec",
+      "color": "blue",
+      "is_st": false,
+      "quality": "Battle-Scarred",
+      "case_name": "Kilowatt Case",
+      "wear_float": 0.7592,
+      "base_price": 2.0
+    },
+    {
+      "name": "SSG 08 | Dezastre",
+      "rarity": "Mil-Spec",
+      "color": "blue",
+      "is_st": false,
+      "quality": "Field-Tested",
+      "case_name": "Kilowatt Case",
+      "wear_float": 0.3416,
+      "base_price": 2.0
+    },
+    {
+      "name": "Glock-18 | Block-18",
+      "rarity": "Restricted",
+      "color": "purple",
+      "is_st": false,
+      "quality": "Field-Tested",
+      "case_name": "Kilowatt Case",
+      "wear_float": 0.2348,
+      "base_price": 10.0
+    },
+    {
+      "name": "Tec-9 | Cut Out",
+      "rarity": "Mil-Spec",
+      "color": "blue",
+      "is_st": false,
+      "quality": "Battle-Scarred",
+      "case_name": "Operation Hydra Case",
+      "wear_float": 0.7891,
+      "base_price": 2.0
+    }
+  ],
+  "auto_sell": {
+    "Mil-Spec": false,
+    "Restricted": false,
+    "Classified": false,
+    "Covert": false,
+    "Rare Special": false
+  },
+  "stats": {
+    "cases_opened": 12,
+    "money_spent": 56.83,
+    "money_earned_from_selling": 38.5,
+    "tradeups_done": 0,
+    "stattrak_drops": 0,
+    "drops_by_rarity": {
+      "Mil-Spec": 9,
+      "Restricted": 3,
+      "Classified": 0,
+      "Covert": 0,
+      "Rare Special": 0
+    }
+  },
+  "achievements_unlocked": [
+    "first_case"
+  ],
+  "prestige_level": 0
+}
