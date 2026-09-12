@@ -30,7 +30,7 @@ SELL_PRICES = config.SELL_PRICES
 class CaseGame:
     def __init__(self, root):
         self.root = root
-        self.root.title("Case Opening Simulator")
+        self.root.title("CS2 Case Opening Simulator")
         self.balance = 500.0
 
         # inventory entry: (name, rarity, color, is_st, quality, case_name, wear_float, base_price)

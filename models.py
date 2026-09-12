@@ -38,13 +38,13 @@ class Item:
     case_name: str
     base_price: float = 5.0
 
-    def get_value(self, prestige_level: int = 0) -> float:
+    def get_value(self, prestige_level: int = 0, perk_bonus: float = 0.0) -> float:
         """
         Dynamic Price Calculation:
         Final Price = Base Price * Float Multiplier * StatTrak Multiplier * Prestige Multiplier
         Float Multipliers: FN = 1.5x (or 1.8x if float < 0.02), MW = 1.1x, FT = 0.8x, WW = 0.65x, BS = 0.5x.
         StatTrak™ Multiplier: 2.5x if is_st is True, else 1.0x.
-        Prestige Bonus: +10% per prestige level (1.0 + (level * 0.10)).
+        Prestige Bonus: +10% per prestige level + permanent perk bonus.
         """
         # Float multiplier
         if self.wear_float < 0.0200:
@@ -61,7 +61,7 @@ class Item:
             float_mult = 0.5
 
         st_mult = 2.5 if self.is_st else 1.0
-        prestige_mult = 1.0 + (prestige_level * 0.10)
+        prestige_mult = 1.0 + (prestige_level * 0.10) + perk_bonus
 
         final_price = self.base_price * float_mult * st_mult * prestige_mult
         return round(final_price, 2)

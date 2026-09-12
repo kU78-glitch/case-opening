@@ -1,18 +1,23 @@
 import json
 import os
 import config
+from typing import TYPE_CHECKING
 from models import Item, GameStats
-from game_logic import GameManager
+
+if TYPE_CHECKING:
+    from game_logic import GameManager
 
 class StorageManager:
     @staticmethod
-    def save_game(game: GameManager, filename: str = config.SAVE_FILE):
+    def save_game(game: "GameManager", filename: str = config.SAVE_FILE):
         data = {
             "balance": round(float(game.balance), 2),
             "prestige_level": int(game.prestige_level),
             "prestige_threshold": float(game.prestige_threshold),
             "achievements_unlocked": list(game.achievements_unlocked),
             "auto_sell": game.auto_sell,
+            "perks": game.perks,
+            "perk_history": game.perk_history,
             "inventory": [item.to_dict() for item in game.inventory],
             "stats": {
                 "cases_opened": game.stats.cases_opened,
@@ -27,7 +32,7 @@ class StorageManager:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
     @staticmethod
-    def load_game(game: GameManager, filename: str = config.SAVE_FILE) -> bool:
+    def load_game(game: "GameManager", filename: str = config.SAVE_FILE) -> bool:
         if not os.path.exists(filename):
             return False
 
@@ -40,6 +45,18 @@ class StorageManager:
             game.prestige_threshold = float(data.get("prestige_threshold", 10000.0))
             game.achievements_unlocked = set(data.get("achievements_unlocked", []))
             game.auto_sell = data.get("auto_sell", {r: False for r in config.RARITIES})
+
+            default_perks = {
+                "covert_luck": 0.0,
+                "gold_luck": 0.0,
+                "stattrak_bonus": 0.0,
+                "sell_bonus": 0.0,
+                "spin_speed": 0.0,
+            }
+            loaded_perks = data.get("perks", {})
+            for k in default_perks:
+                game.perks[k] = float(loaded_perks.get(k, default_perks[k]))
+            game.perk_history = list(data.get("perk_history", []))
 
             game.inventory = [Item.from_dict(item_dict) for item_dict in data.get("inventory", [])]
 

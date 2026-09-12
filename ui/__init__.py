@@ -1,6 +1,6 @@
-from ui.main_window import MainWindow
-from ui.inventory_ui import InventoryWindow
-from ui.stats_ui import StatsWindow
-from ui.tradeup_ui import TradeUpWindow
+from ui.app import App
 
-__all__ = ["MainWindow", "InventoryWindow", "StatsWindow", "TradeUpWindow"]
+# Backwards-compatibility alias
+MainWindow = App
+
+__all__ = ["App", "MainWindow"]
