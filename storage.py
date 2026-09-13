@@ -29,29 +29,51 @@ class StorageManager:
                 "drops_by_rarity": game.stats.drops_by_rarity
             }
         }
+        # 1. Save encrypted binary save (.dat)
         success = save_encrypted_file(filename, data)
         if not success:
             print(f"Warning: Failed to save game state to '{filename}'")
+
+        # 2. Always sync save.json for user inspection and testing
+        legacy_file = getattr(config, "LEGACY_SAVE_FILE", None)
+        if legacy_file:
+            try:
+                with open(legacy_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=4)
+            except Exception as e:
+                print(f"Warning: Failed to sync save.json: {e}")
 
     @staticmethod
     def load_game(game: "GameManager", filename: str = config.SAVE_FILE) -> bool:
         data = None
         is_tampered = False
+        legacy_file = getattr(config, "LEGACY_SAVE_FILE", None)
 
-        # 1. Attempt loading encrypted binary save (.dat)
-        if os.path.exists(filename):
+        # 1. Check if user edited save.json more recently than save.dat
+        if legacy_file and os.path.exists(legacy_file):
+            dat_exists = os.path.exists(filename)
+            if not dat_exists or (os.path.getmtime(legacy_file) > os.path.getmtime(filename)):
+                try:
+                    with open(legacy_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    print(f"[*] Loaded user-edited '{legacy_file}', updating encrypted '{filename}'")
+                    save_encrypted_file(filename, data)
+                except Exception as e:
+                    print(f"Warning: Could not read user save.json: {e}")
+                    data = None
+
+        # 2. Otherwise load encrypted binary save (.dat)
+        if data is None and os.path.exists(filename):
             data, is_tampered = load_encrypted_file(filename)
             if is_tampered:
                 print(f"[SECURITY ALERT] Save file '{filename}' failed tamper/HMAC verification! Resetting to safe defaults.")
                 return False
 
-        # 2. Backward compatibility: if .dat doesn't exist, check legacy save.json
-        if data is None and hasattr(config, "LEGACY_SAVE_FILE") and os.path.exists(config.LEGACY_SAVE_FILE):
+        # 3. Fallback to save.json if dat was not found
+        if data is None and legacy_file and os.path.exists(legacy_file):
             try:
-                with open(config.LEGACY_SAVE_FILE, "r", encoding="utf-8") as f:
+                with open(legacy_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                print(f"[*] Migrating legacy save file '{config.LEGACY_SAVE_FILE}' to encrypted format '{filename}'")
-                # Immediately encrypt and save to new format
                 save_encrypted_file(filename, data)
             except Exception as e:
                 print(f"Warning: Could not read legacy save file: {e}")
