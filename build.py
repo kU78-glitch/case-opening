@@ -60,7 +60,7 @@ def build_executable():
         "--windowed",
         "--name", "Case_Opening_Simulator",
         "--contents-directory", "_internal",
-        "--add-data", "assets;_internal/assets",
+        "--add-data", "assets;assets",
     ]
     cmd.extend(ctk_args)
     cmd.append("main.py")

@@ -11,6 +11,7 @@ from cases import (
 from item_prices import get_item_market_price, BENCHMARK_TIER_PRICES
 import config
 from models import roll_float, float_to_quality, Item
+import image_loader
 from ui.theme import (
     PANEL_BG, CARD_BG, ACCENT_BLUE, ACCENT_HOVER, SUCCESS_GREEN,
     TEXT_MAIN, TEXT_MUTED, GOLD_COLOR, RARITY_COLORS
@@ -197,38 +198,86 @@ class CasesView(ctk.CTkFrame):
         self.canvases_frame = ctk.CTkFrame(self.spinner_card, fg_color="transparent")
         self.canvases_frame.pack(fill="both", expand=True, padx=8, pady=8)
 
-        # Auto-Sell Options
-        auto_card = ctk.CTkFrame(container, fg_color=CARD_BG, corner_radius=10)
-        auto_card.pack(fill="x", padx=10, pady=(6, 0))
+        # Case Drops Preview Grid with Rarity-Colored Frames
+        self.preview_card = ctk.CTkFrame(container, fg_color=CARD_BG, corner_radius=10)
+        self.preview_card.pack(fill="both", expand=True, padx=10, pady=(6, 0))
 
-        auto_title = ctk.CTkLabel(
-            auto_card,
-            text="Auto-Sell Dropped Items By Rarity:",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color=TEXT_MUTED
-        )
-        auto_title.pack(anchor="w", padx=15, pady=(6, 2))
+        preview_header = ctk.CTkFrame(self.preview_card, fg_color="transparent")
+        preview_header.pack(fill="x", padx=12, pady=(8, 4))
 
-        cb_row = ctk.CTkFrame(auto_card, fg_color="transparent")
-        cb_row.pack(fill="x", padx=15, pady=(0, 8))
+        ctk.CTkLabel(
+            preview_header,
+            text="🔍 Case Drops Preview:",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=TEXT_MAIN
+        ).pack(side="left")
 
-        self.auto_sell_vars = {}
-        for rarity in config.RARITIES:
-            var = ctk.BooleanVar(value=self.game.auto_sell.get(rarity, False))
-            self.auto_sell_vars[rarity] = var
-            color = RARITY_COLORS.get(rarity, TEXT_MAIN)
-            cb = ctk.CTkCheckBox(
-                cb_row,
-                text=rarity,
-                variable=var,
-                text_color=color,
-                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-                checkbox_height=18,
-                checkbox_width=18,
-                corner_radius=4,
-                command=lambda r=rarity, v=var: self._on_auto_sell_toggle(r, v)
+        # Static Grid Frame for Items in current case
+        self.preview_grid_frame = ctk.CTkFrame(self.preview_card, fg_color="transparent")
+        self.preview_grid_frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def _update_case_preview(self, case_name: str):
+        """Populates responsive preview grid with rarity-bordered skin cards and 100x100 images."""
+        for child in self.preview_grid_frame.winfo_children():
+            child.destroy()
+
+        case_data = get_case(case_name)
+        if not case_data or "items" not in case_data:
+            return
+
+        # Flatten items grouped from highest rarity to lowest
+        items_by_rarity = case_data.get("items", {})
+        display_items = []
+        for rarity in reversed(config.RARITIES):
+            pool = items_by_rarity.get(rarity, [])
+            for entry in pool:
+                name = entry[0] if isinstance(entry, (list, tuple)) else entry
+                color = entry[1] if isinstance(entry, (list, tuple)) and len(entry) > 1 else "blue"
+                display_items.append((name, rarity, color))
+
+        # Show up to 12 featured items neatly in responsive columns (e.g. 6 cols x 2 rows)
+        num_cols = 6
+        for col_idx in range(num_cols):
+            self.preview_grid_frame.grid_columnconfigure(col_idx, weight=1, uniform="prev_col")
+
+        for idx, (name, rarity, color) in enumerate(display_items[:12]):
+            r_border_color = RARITY_COLORS.get(rarity, "#4b69ff")
+            price = get_item_market_price(name, rarity)
+
+            # Rarity-bordered item card
+            card = ctk.CTkFrame(
+                self.preview_grid_frame,
+                fg_color="#181c26",
+                border_width=2,
+                border_color=r_border_color,
+                corner_radius=8
             )
-            cb.pack(side="left", padx=10, expand=True)
+            row = idx // num_cols
+            col = idx % num_cols
+            card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+
+            # Centered skin artwork (100x100)
+            img = image_loader.get_skin_image(name, rarity=rarity, size=(90, 68))
+            img_lbl = ctk.CTkLabel(card, text="", image=img)
+            img_lbl.pack(pady=(4, 2))
+
+            # Skin name label (truncated if long)
+            clean_name = name.split("|")[-1].strip() if "|" in name else name
+            clean_name = clean_name[:16]
+            ctk.CTkLabel(
+                card,
+                text=clean_name,
+                font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                text_color=TEXT_MAIN
+            ).pack(padx=2)
+
+            # Price label
+            ctk.CTkLabel(
+                card,
+                text=f"${price:,.2f}",
+                font=ctk.CTkFont(family="Segoe UI", size=9),
+                text_color=r_border_color
+            ).pack(pady=(0, 4))
 
     def _get_max_unlocked_cases(self) -> int:
         if self.game.prestige_level >= 2:
@@ -274,13 +323,13 @@ class CasesView(ctk.CTkFrame):
 
         # Canvas heights based on count
         if count == 1:
-            row_height = 80
+            row_height = 86
             pady = 2
         elif count == 2:
-            row_height = 68
-            pady = 3
+            row_height = 76
+            pady = 2
         else:
-            row_height = 58
+            row_height = 68
             pady = 2
 
         for row_idx in range(count):
@@ -752,6 +801,10 @@ class CasesView(ctk.CTkFrame):
                 text=f"Case: ${case_price:.2f} + Key: ${key_price:.2f} (${single_cost:.2f}/ea)  |  Total ({self.case_count}x): ${total_cost:.2f}"
             )
 
+        # Refresh the Case Drops Preview Grid
+        if hasattr(self, "preview_grid_frame"):
+            self._update_case_preview(case_name)
+
     def _toggle_actions_menu(self):
         """Opens or closes the compact context menu for case actions (⋮)."""
         if hasattr(self, "_actions_menu_frame") and self._actions_menu_frame is not None and self._actions_menu_frame.winfo_exists():
@@ -1123,20 +1176,37 @@ class CasesView(ctk.CTkFrame):
                     outline = "#fbbf24" if is_center else "#252833"
                     width = 3 if is_center else 1
 
+                    card_w = 40
+                    card_top = y - card_half_h
+                    card_bot = y + card_half_h
+
+                    # Outer rarity card frame with dark background
                     canvas.create_rectangle(
-                        x - 38, y - card_half_h, x + 38, y + card_half_h,
-                        fill=bg, outline=outline, width=width
+                        x - card_w, card_top, x + card_w, card_bot,
+                        fill="#151922", outline=outline if is_center else bg, width=width
+                    )
+                    # Bottom rarity colored accent bar
+                    canvas.create_rectangle(
+                        x - card_w, card_bot - 4, x + card_w, card_bot,
+                        fill=bg, outline=""
                     )
 
                     # Obfuscate Gold (Rare Special) names on the track
                     if item.get("rarity") == "Rare Special":
-                        display = "\u2605 Rare Special Item \u2605"
+                        display = "★ GOLD ★"
+                        photo = image_loader.get_tk_photo_image("★ Karambit | Doppler", rarity="Rare Special", size=(44, 32))
                     else:
-                        st_pref = "\u2605 " if item.get("is_st") else ""
-                        display = f"{st_pref}{item['name']}"
+                        st_pref = "★ " if item.get("is_st") else ""
+                        short_name = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
+                        display = f"{st_pref}{short_name[:12]}"
+                        photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=(44, 32))
+
+                    if photo:
+                        canvas.create_image(x, y - 6, image=photo)
+
                     canvas.create_text(
-                        x, y, text=display, fill="#ffffff",
-                        font=("Segoe UI", 9, "bold"), width=72
+                        x, y + 18, text=display, fill="#ffffff",
+                        font=("Segoe UI", 8, "bold"), width=76
                     )
 
             # Center indicator line (golden ticker)
@@ -1416,3 +1486,109 @@ class CasesView(ctk.CTkFrame):
 
         self.on_state_changed()
         self.game.save()
+
+        # Display rich winning item modal with centered glowing skin artwork
+        if self.winning_items:
+            self._show_win_modal(self.winning_items)
+
+    def _show_win_modal(self, items: List[Item]):
+        """Displays a dedicated pop-up window with 200x200 px skin images inside a glowing rarity-colored frame."""
+        if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
+            self._win_modal.destroy()
+
+        self._win_modal = ctk.CTkFrame(
+            self,
+            fg_color="#0d0f17",
+            border_width=3,
+            border_color="#ffd700" if any(it.rarity == "Rare Special" for it in items) else "#3b82f6",
+            corner_radius=16
+        )
+        self._win_modal.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.76, relheight=0.82)
+        self._win_modal.lift()
+
+        # Modal Header
+        top_bar = ctk.CTkFrame(self._win_modal, fg_color="transparent")
+        top_bar.pack(fill="x", padx=20, pady=(16, 8))
+
+        is_multi = len(items) > 1
+        modal_title = "🎉 UNBOXING COMPLETED!" if is_multi else "🎉 NEW ITEM UNBOXED!"
+        ctk.CTkLabel(
+            top_bar,
+            text=modal_title,
+            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+            text_color="#ffd700" if any(it.rarity == "Rare Special" for it in items) else TEXT_MAIN
+        ).pack(side="left")
+
+        close_btn = ctk.CTkButton(
+            top_bar,
+            text="✕ Collect & Close",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            fg_color="#374151",
+            hover_color="#4b5563",
+            width=120,
+            height=30,
+            corner_radius=6,
+            command=self._win_modal.destroy
+        )
+        close_btn.pack(side="right")
+
+        # Cards Host
+        cards_host = ctk.CTkFrame(self._win_modal, fg_color="transparent")
+        cards_host.pack(fill="both", expand=True, padx=20, pady=(0, 14))
+
+        # Render items side-by-side
+        for it in items:
+            r_color = RARITY_COLORS.get(it.rarity, "#4b69ff")
+            val = self.game.get_item_value(it)
+
+            # Glowing rarity-bordered card
+            card = ctk.CTkFrame(
+                cards_host,
+                fg_color="#141722",
+                border_width=3,
+                border_color=r_color,
+                corner_radius=14
+            )
+            card.pack(side="left", fill="both", expand=True, padx=8, pady=4)
+
+            # Rarity tag pill
+            pill = ctk.CTkFrame(card, fg_color=r_color, corner_radius=10, height=24)
+            pill.pack(pady=(12, 4))
+            ctk.CTkLabel(
+                pill,
+                text=f"  {it.rarity.upper()}  ",
+                font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                text_color="#ffffff" if it.rarity != "Mil-Spec" else "#111827"
+            ).pack(padx=6, pady=2)
+
+            # 200x200 px Centered Skin Image
+            img_size = (180, 140) if is_multi else (220, 170)
+            img = image_loader.get_skin_image(it.name, rarity=it.rarity, size=img_size)
+            ctk.CTkLabel(card, text="", image=img).pack(pady=(8, 6))
+
+            # Weapon & Skin Title
+            st_badge = "★ StatTrak™ " if it.is_st else ""
+            st_color = "#f97316" if it.is_st else TEXT_MAIN
+            ctk.CTkLabel(
+                card,
+                text=f"{st_badge}{it.name}",
+                font=ctk.CTkFont(family="Segoe UI", size=15 if is_multi else 17, weight="bold"),
+                text_color=st_color,
+                wraplength=260
+            ).pack(pady=(0, 4), padx=10)
+
+            # Quality and Float details
+            ctk.CTkLabel(
+                card,
+                text=f"{it.quality}  •  Float: {it.wear_float:.5f}",
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                text_color=TEXT_MUTED
+            ).pack(pady=(0, 6))
+
+            # Value badge
+            ctk.CTkLabel(
+                card,
+                text=f"Est. Value: ${val:,.2f}",
+                font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+                text_color=SUCCESS_GREEN
+            ).pack(pady=(0, 12))
