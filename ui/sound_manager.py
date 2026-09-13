@@ -70,3 +70,12 @@ class SoundManager:
         """Deprecated alias redirecting to consolidated play_tick."""
         self.play_tick()
 
+    def play_sell(self):
+        """Play sell confirmation sound."""
+        if self.enabled and self.tick_sound:
+            try:
+                self.tick_sound.play()
+            except Exception:
+                pass
+
+

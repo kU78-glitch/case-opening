@@ -53,11 +53,22 @@ class CasesView(ctk.CTkFrame):
         self._anim_scroll_px: float = 0.0
         self._last_tick_item: int = -1   # last item index that crossed center (for tick sync)
         self._anim_target_item: int = 0  # the item index the spin must land on
+        self._toast_timer = None
 
         self._build_ui()
         self._setup_spinner_rows(1)
         self.refresh_controls()
         self.update_case_price()
+
+    def _show_toast(self, message: str, color: str = SUCCESS_GREEN, duration_ms: int = 4000):
+        """Displays a temporary lightweight toast banner below the control panel."""
+        if hasattr(self, "_toast_timer") and self._toast_timer is not None:
+            try:
+                self.after_cancel(self._toast_timer)
+            except Exception:
+                pass
+        self.rolling_label.configure(text=message, text_color=color, height=26)
+        self._toast_timer = self.after(duration_ms, lambda: self.rolling_label.configure(text="", height=0))
 
     def _build_ui(self):
         container = ctk.CTkFrame(self, fg_color="transparent")
@@ -116,36 +127,42 @@ class CasesView(ctk.CTkFrame):
             variable=self.selected_case_var,
             values=case_names,
             width=260,
-            height=36,
-            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-            command=lambda _: self.update_case_price()
-        )
-        self.case_menu.pack(side="left", padx=(10, 6))
-
-        # View Case Drops Button
-        self.preview_btn = ctk.CTkButton(
-            selector_row,
-            text="🔍 View Drops",
+            height=34,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             fg_color="#1e222d",
-            hover_color="#2d3342",
-            text_color=TEXT_MAIN,
-            height=36,
-            corner_radius=8,
-            command=self._open_case_drops_modal
+            button_color=ACCENT_BLUE,
+            button_hover_color=ACCENT_HOVER,
+            dropdown_fg_color="#1e222d",
+            dropdown_hover_color=ACCENT_HOVER,
+            dropdown_text_color=TEXT_MAIN,
+            command=lambda _: self.update_case_price()
         )
-        self.preview_btn.pack(side="left", padx=(0, 6))
+        self.case_menu.pack(side="left", padx=(0, 10))
 
-        self.actions_btn = ctk.CTkButton(
+        # View Case Drops Preview Pop-up Button
+        self.preview_btn = ctk.CTkButton(
             selector_row,
-            text="⋮",
-            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            text="👁️ View Case Drops",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             fg_color="#1e222d",
             hover_color="#2d3342",
-            text_color=TEXT_MAIN,
-            width=36,
-            height=36,
-            corner_radius=8,
+            border_width=1,
+            border_color="#374151",
+            height=34,
+            command=self._open_case_drops_modal
+        )
+        self.preview_btn.pack(side="left", padx=(0, 10))
+
+        # Actions Dropdown Button for Custom Cases (Rename, Edit, Delete)
+        self.actions_btn = ctk.CTkButton(
+            selector_row,
+            text="⚙️ Case Options ▼",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            fg_color="#1e222d",
+            hover_color="#2d3342",
+            border_width=1,
+            border_color="#374151",
+            height=34,
             command=self._toggle_actions_menu
         )
         self.actions_btn.pack(side="left", padx=(0, 10))
@@ -160,7 +177,7 @@ class CasesView(ctk.CTkFrame):
 
         # Action Controls: OPEN CASE + Multi-Count SegmentedButton
         btn_row = ctk.CTkFrame(container, fg_color="transparent")
-        btn_row.pack(pady=(4, 12))
+        btn_row.pack(pady=(4, 8))
 
         self.open_btn = ctk.CTkButton(
             btn_row,
@@ -213,18 +230,64 @@ class CasesView(ctk.CTkFrame):
         )
         self.skip_cb.pack(side="left", padx=10)
 
-        # Result Announcement Label (hidden by default, keeps API reference)
+        # Auto-Sell Rarity Filter Checkboxes Row
+        auto_sell_row = ctk.CTkFrame(container, fg_color="transparent")
+        auto_sell_row.pack(pady=(0, 6))
+
+        ctk.CTkLabel(
+            auto_sell_row,
+            text="Auto-Sell:",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color=TEXT_MUTED
+        ).pack(side="left", padx=(0, 8))
+
+        self.auto_sell_vars = {}
+        auto_sell_tiers = [
+            ("Mil-Spec", "Mil-Spec", "#4b69ff"),
+            ("Restricted", "Restricted", "#8847ff"),
+            ("Classified", "Classified", "#d32ce6"),
+            ("Covert", "Covert", "#eb4b4b"),
+        ]
+
+        for rarity, label, color in auto_sell_tiers:
+            var = ctk.BooleanVar(value=bool(self.game.auto_sell.get(rarity, False)))
+            self.auto_sell_vars[rarity] = var
+
+            def make_toggle(r_name=rarity, r_var=var):
+                def toggle():
+                    self.game.auto_sell[r_name] = r_var.get()
+                    self.game.save()
+                return toggle
+
+            cb = ctk.CTkCheckBox(
+                auto_sell_row,
+                text=f"Auto-Sell {label}",
+                variable=var,
+                command=make_toggle(rarity, var),
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                text_color=color,
+                fg_color=color,
+                hover_color=color,
+                border_color=color,
+                checkmark_color="#ffffff",
+                width=120,
+                height=26
+            )
+            cb.pack(side="left", padx=6)
+
+        # Lightweight Status Notification / Toast Label
         self.rolling_label = ctk.CTkLabel(
             container,
             text="",
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
-            text_color=TEXT_MAIN,
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            text_color=SUCCESS_GREEN,
             height=0
         )
+        self.rolling_label.pack(pady=(0, 4))
 
         # Dynamic Stacked Spinners Container
         self.spinner_card = ctk.CTkFrame(container, fg_color="#0b0d11", corner_radius=10)
-        self.spinner_card.pack(fill="x", padx=10, pady=10)
+        self.spinner_card.pack(fill="x", padx=10, pady=6)
 
         self.canvases_frame = ctk.CTkFrame(self.spinner_card, fg_color="transparent")
         self.canvases_frame.pack(fill="both", expand=True, padx=8, pady=8)
@@ -350,15 +413,19 @@ class CasesView(ctk.CTkFrame):
             self._setup_spinner_rows(self.case_count)
             self.update_case_price()
 
+        if hasattr(self, "auto_sell_vars"):
+            for rarity, var in self.auto_sell_vars.items():
+                var.set(bool(self.game.auto_sell.get(rarity, False)))
+
     def _on_count_selected(self, value: str):
         target_count = int(value.replace("x", ""))
         max_allowed = self._get_max_unlocked_cases()
 
         if target_count > max_allowed:
             req_prestige = 1 if target_count == 2 else 2
-            self.rolling_label.configure(
-                text=f"🔒 {target_count}x Multi-Case unlocks at Prestige {req_prestige}!",
-                text_color=GOLD_COLOR
+            self._show_toast(
+                f"🔒 {target_count}x Multi-Case unlocks at Prestige {req_prestige}!",
+                GOLD_COLOR
             )
             # Revert selection
             self.seg_button.set(f"{self.case_count}x")
@@ -1078,9 +1145,9 @@ class CasesView(ctk.CTkFrame):
         total_cost = round(single_cost * self.case_count, 2)
 
         if self.game.balance < total_cost:
-            self.rolling_label.configure(
-                text=f"Insufficient balance! Need ${total_cost:.2f} to open {self.case_count} cases.",
-                text_color="#ef4444"
+            self._show_toast(
+                f"⚠️ Insufficient balance! Need ${total_cost:.2f} to open {self.case_count} cases.",
+                "#ef4444"
             )
             return
 
@@ -1092,7 +1159,7 @@ class CasesView(ctk.CTkFrame):
                 self.winning_items.append(item)
 
         if len(self.winning_items) != self.case_count:
-            self.rolling_label.configure(text="Error generating drops!", text_color="#ef4444")
+            self._show_toast("Error generating drops!", "#ef4444")
             return
 
         # Immediately update header balance without triggering achievements prematurely
@@ -1106,7 +1173,7 @@ class CasesView(ctk.CTkFrame):
         self.open_btn.configure(state="disabled")
         self.seg_button.configure(state="disabled")
         self.case_menu.configure(state="disabled")
-        self.rolling_label.configure(text="Spinning...", text_color=TEXT_MAIN)
+        self.rolling_label.configure(text="", height=0)
 
         case_data = get_case(case_name)
         if not case_data:
@@ -1496,14 +1563,11 @@ class CasesView(ctk.CTkFrame):
         has_covert = any(it.rarity == "Covert" for it in self.winning_items)
 
         # Audio reveal
-        if has_gold:
-            self.sound.play_gold()
-        elif has_covert:
+        if has_gold or has_covert:
             self.sound.play_gold()
         else:
             self.sound.play_win()
 
-        result_texts = []
         auto_sold_count = 0
         auto_sold_total = 0.0
 
@@ -1511,47 +1575,42 @@ class CasesView(ctk.CTkFrame):
         for item in self.winning_items:
             auto_sold, val = self.game.finalize_opened_item(item)
             opened_results.append((item, auto_sold, val))
-            st_prefix = "★ " if item.is_st else ""
-            item_display = f"{st_prefix}{item.name} [{item.quality}]"
-
             if auto_sold:
                 auto_sold_count += 1
                 auto_sold_total += val
-                result_texts.append(f"{item_display} (Auto-sold ${val:,.2f})")
-            else:
-                result_texts.append(f"{item_display} (${val:,.2f})")
-
-        # Update announcement text
-        if self.case_count == 1:
-            it = self.winning_items[0]
-            st = "★ " if it.is_st else ""
-            val = self.game.get_item_value(it)
-            r_color = RARITY_COLORS.get(it.rarity, TEXT_MAIN)
-            if self.game.auto_sell.get(it.rarity, False):
-                self.rolling_label.configure(
-                    text=f"Auto-sold {st}{it.name} [{it.quality} ({it.wear_float:.4f})] for ${val:,.2f}!",
-                    text_color=SUCCESS_GREEN
-                )
-            else:
-                self.rolling_label.configure(
-                    text=f"You got: {st}{it.name} [{it.quality} ({it.wear_float:.4f})] (${val:,.2f})",
-                    text_color=r_color
-                )
-        else:
-            summary = "  |  ".join(result_texts)
-            if auto_sold_count > 0:
-                summary += f"  (Auto-sold {auto_sold_count} items for +${auto_sold_total:,.2f})"
-            self.rolling_label.configure(
-                text=summary,
-                text_color=GOLD_COLOR if has_gold else SUCCESS_GREEN
-            )
 
         self.on_state_changed()
         self.game.save()
 
-        # Display rich winning item modal with centered glowing skin artwork
-        if self.winning_items:
-            self._show_win_modal(opened_results)
+        kept_results = [res for res in opened_results if not res[1]]
+        auto_sold_results = [res for res in opened_results if res[1]]
+
+        # If ALL items dropped were auto-sold, skip the modal completely!
+        if not kept_results:
+            self.sound.play_sell()
+            if len(auto_sold_results) == 1:
+                it, _, val = auto_sold_results[0]
+                st = "★ " if it.is_st else ""
+                self._show_toast(
+                    f"⚡ Auto-sold {st}{it.name} [{it.quality}] for +${val:,.2f}!",
+                    SUCCESS_GREEN
+                )
+            else:
+                self._show_toast(
+                    f"⚡ Auto-sold {len(auto_sold_results)} items for +${auto_sold_total:,.2f} directly to Balance!",
+                    SUCCESS_GREEN
+                )
+            return
+
+        # If some items were auto-sold in a multi-open, show toast for them
+        if auto_sold_results:
+            self._show_toast(
+                f"⚡ Auto-sold {len(auto_sold_results)} item(s) for +${auto_sold_total:,.2f}!",
+                SUCCESS_GREEN
+            )
+
+        # Display rich winning item modal ONLY for non-auto-sold items
+        self._show_win_modal(kept_results)
 
     def _show_win_modal(self, opened_results: List):
         """Displays a dedicated pop-up window with 200x200 px skin images inside a glowing rarity-colored frame."""
@@ -1559,6 +1618,8 @@ class CasesView(ctk.CTkFrame):
             self._win_modal.destroy()
 
         items = [res[0] if isinstance(res, (list, tuple)) else res for res in opened_results]
+        if not items:
+            return
 
         self._win_modal = ctk.CTkFrame(
             self,
@@ -1583,6 +1644,39 @@ class CasesView(ctk.CTkFrame):
             text_color="#ffd700" if any(it.rarity == "Rare Special" for it in items) else TEXT_MAIN
         ).pack(side="left")
 
+        # Multi-drop: Quick Sell All & Close button
+        if is_multi:
+            total_sell_val = sum(res[2] if isinstance(res, (list, tuple)) else self.game.get_item_value(res) for res in opened_results)
+            def sell_all_handler():
+                for res in list(opened_results):
+                    it_to_sell = res[0] if isinstance(res, (list, tuple)) else res
+                    pv = res[2] if isinstance(res, (list, tuple)) else self.game.get_item_value(res)
+                    if it_to_sell in self.game.inventory:
+                        idx = self.game.inventory.index(it_to_sell)
+                        self.game.sell_item(idx)
+                    else:
+                        self.game.balance = round(self.game.balance + pv, 2)
+                        self.game.stats.money_earned_from_selling = round(
+                            self.game.stats.money_earned_from_selling + pv, 2
+                        )
+                self.sound.play_sell()
+                self.on_state_changed()
+                self.game.save()
+                if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
+                    self._win_modal.destroy()
+
+            sell_all_btn = ctk.CTkButton(
+                top_bar,
+                text=f"⚡ Quick Sell All (+${total_sell_val:,.2f})",
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                fg_color="#dc2626",
+                hover_color="#b91c1c",
+                height=30,
+                corner_radius=6,
+                command=sell_all_handler
+            )
+            sell_all_btn.pack(side="right", padx=(0, 10))
+
         close_btn = ctk.CTkButton(
             top_bar,
             text="✕ Collect & Close",
@@ -1599,6 +1693,8 @@ class CasesView(ctk.CTkFrame):
         # Cards Host
         cards_host = ctk.CTkFrame(self._win_modal, fg_color="transparent")
         cards_host.pack(fill="both", expand=True, padx=20, pady=(0, 14))
+
+        remaining_unsold = list(items)
 
         # Render items side-by-side
         for entry in opened_results:
@@ -1665,55 +1761,46 @@ class CasesView(ctk.CTkFrame):
             ).pack(pady=(0, 8))
 
             # Action / Quick Sell Button
-            if auto_sold:
-                ctk.CTkLabel(
-                    card,
-                    text="✅ Auto-Sold to Balance",
-                    font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                    text_color=SUCCESS_GREEN,
-                    height=32
-                ).pack(pady=(0, 10))
-            else:
-                def make_quick_sell_handler(item_to_sell: Item, price_val: float, btn: ctk.CTkButton):
-                    def handler():
-                        # Find item in game inventory
-                        if item_to_sell in self.game.inventory:
-                            idx = self.game.inventory.index(item_to_sell)
-                            sold_val = self.game.sell_item(idx)
-                        else:
-                            # Direct credit fallback
-                            sold_val = price_val
-                            self.game.balance = round(self.game.balance + sold_val, 2)
-                            self.game.stats.money_earned_from_selling = round(
-                                self.game.stats.money_earned_from_selling + sold_val, 2
-                            )
-                        if hasattr(self.sound, "play_sell"):
-                            self.sound.play_sell()
-                        elif hasattr(self.sound, "play_tick"):
-                            self.sound.play_tick()
-                        self.on_state_changed()
-                        self.game.save()
+            def make_quick_sell_handler(item_to_sell: Item, price_val: float, btn: ctk.CTkButton):
+                def handler():
+                    # Find item in game inventory
+                    if item_to_sell in self.game.inventory:
+                        idx = self.game.inventory.index(item_to_sell)
+                        sold_val = self.game.sell_item(idx)
+                    else:
+                        # Direct credit fallback
+                        sold_val = price_val
+                        self.game.balance = round(self.game.balance + sold_val, 2)
+                        self.game.stats.money_earned_from_selling = round(
+                            self.game.stats.money_earned_from_selling + sold_val, 2
+                        )
+                    self.sound.play_sell()
+                    self.on_state_changed()
+                    self.game.save()
 
-                        # For single item unboxing, immediately close the modal
-                        if not is_multi:
-                            if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
-                                self._win_modal.destroy()
-                        else:
-                            btn.configure(
-                                text=f"✅ Sold (+${sold_val:,.2f})",
-                                state="disabled",
-                                fg_color="#374151"
-                            )
-                    return handler
+                    if item_to_sell in remaining_unsold:
+                        remaining_unsold.remove(item_to_sell)
 
-                sell_btn = ctk.CTkButton(
-                    card,
-                    text=f"⚡ Quick Sell (+${val:,.2f})",
-                    font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                    fg_color="#dc2626",
-                    hover_color="#b91c1c",
-                    height=32,
-                    corner_radius=8
-                )
-                sell_btn.configure(command=make_quick_sell_handler(it, val, sell_btn))
-                sell_btn.pack(pady=(0, 10), padx=20, fill="x")
+                    # For single item unboxing OR when all items are sold, immediately close modal
+                    if not is_multi or len(remaining_unsold) == 0:
+                        if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
+                            self._win_modal.destroy()
+                    else:
+                        btn.configure(
+                            text=f"✅ Sold (+${sold_val:,.2f})",
+                            state="disabled",
+                            fg_color="#374151"
+                        )
+                return handler
+
+            sell_btn = ctk.CTkButton(
+                card,
+                text=f"⚡ Quick Sell (+${val:,.2f})",
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                fg_color="#dc2626",
+                hover_color="#b91c1c",
+                height=32,
+                corner_radius=8
+            )
+            sell_btn.configure(command=make_quick_sell_handler(it, val, sell_btn))
+            sell_btn.pack(pady=(0, 10), padx=20, fill="x")
