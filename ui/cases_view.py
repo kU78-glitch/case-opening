@@ -1357,25 +1357,30 @@ class CasesView(ctk.CTkFrame):
                             fill=bg, outline=""
                         )
 
-                    # Image rendering
+                    # Image rendering — fill most of the card (card = 80×52px)
+                    # Image: 72×36, centered at y-8 → spans y-26..y+10, leaving y+10..y+26 for text
+                    img_size = (72, 36)
+                    img_y = y - 8  # shift image up to make room for label
+
                     if is_gold:
-                        # Always use the procedural gold ★ icon — instant, no CDN
-                        photo = image_loader.get_gold_special_tk_photo(size=(44, 32))
-                        display = "★ GOLD ★"
+                        photo = image_loader.get_gold_special_tk_photo(size=img_size)
+                        display = "★ GOLD"
                         text_fill = "#ffd700"
                     else:
                         st_pref = "★ " if item.get("is_st") else ""
-                        short_name = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
-                        display = f"{st_pref}{short_name[:12]}"
-                        photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=(44, 32))
+                        skin_part = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
+                        display = f"{st_pref}{skin_part[:11]}"
+                        photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=img_size)
                         text_fill = "#ffffff"
 
                     if photo:
-                        canvas.create_image(x, y - 6, image=photo)
+                        canvas.create_image(x, img_y, image=photo)
 
+                    # Label sits in the lower portion of the card (y+10 to y+26)
                     canvas.create_text(
-                        x, y + 18, text=display, fill=text_fill,
-                        font=("Segoe UI", 8, "bold"), width=76
+                        x, y + 19,
+                        text=display, fill=text_fill,
+                        font=("Segoe UI", 7, "bold"), width=74
                     )
 
             # Center indicator line (golden ticker)
@@ -1491,9 +1496,13 @@ class CasesView(ctk.CTkFrame):
             is_upgrade = random.random() < 0.50
             self._inline_bonus_outcomes[row_idx] = is_upgrade
 
+            # Strip leading ★ so we never get "★ BASE: ★ Kukri..."
+            clean_base = gold_item.name.lstrip("★ ").strip()
+            clean_upgrade = upgraded_name.lstrip("★ ").strip()
+
             bonus_tile_types = [
-                {"type": "UPGRADE", "title": f"★ UPGRADE: {upgraded_name}", "color": "#10ffaa", "bg": "#003320"},
-                {"type": "BASE",    "title": f"★ BASE: {gold_item.name}",   "color": "#ffd700", "bg": "#3d2800"}
+                {"type": "UPGRADE", "name": upgraded_name,      "title": f"⬆ {clean_upgrade[:26]}", "color": "#10ffaa", "bg": "#003320"},
+                {"type": "BASE",    "name": gold_item.name,     "title": f"★ {clean_base[:26]}",     "color": "#ffd700", "bg": "#3d2800"}
             ]
 
             seq = []
@@ -1548,12 +1557,25 @@ class CasesView(ctk.CTkFrame):
                     x - 98, y - card_half_h, x + 98, y + card_half_h,
                     fill=tile["bg"], outline=outline, width=width
                 )
+
+                # Render skin image inside the re-spin tile (64×36 fits inside 196×52 tile)
+                tile_img_size = (64, 34)
+                tile_name = tile.get("name", "")
+                if tile["type"] == "UPGRADE" and tile_name:
+                    tile_photo = image_loader.get_tk_photo_image(tile_name, rarity="Rare Special", size=tile_img_size)
+                else:
+                    tile_photo = image_loader.get_gold_special_tk_photo(size=tile_img_size)
+
+                if tile_photo:
+                    canvas.create_image(x, y - 8, image=tile_photo)
+
+                # Label below image
                 canvas.create_text(
-                    x, y,
+                    x, y + 17,
                     text=tile["title"],
                     fill=tile["color"],
-                    font=("Segoe UI", 9, "bold"),
-                    width=190
+                    font=("Segoe UI", 8, "bold"),
+                    width=188
                 )
 
         # Golden center line
