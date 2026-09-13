@@ -61,7 +61,6 @@ def build_executable():
         "--name", "Case_Opening_Simulator",
         "--contents-directory", "_internal",
         "--add-data", "assets;_internal/assets",
-        "--add-data", "custom_cases.json;.",
     ]
     cmd.extend(ctk_args)
     cmd.append("main.py")
@@ -78,15 +77,16 @@ def build_executable():
         exe_path = os.path.join(dist_folder, "Case_Opening_Simulator.exe")
         zip_path = os.path.join(dist_dir, "Case_Opening_Simulator.zip")
 
-        # Ensure custom_cases.dat or template is present in distribution root
+        # Ensure secure custom_cases.dat is present in distribution root
         custom_cases_dat = os.path.join(base_dir, "custom_cases.dat")
         root_custom_cases_dat = os.path.join(dist_folder, "custom_cases.dat")
         if os.path.exists(custom_cases_dat) and not os.path.exists(root_custom_cases_dat):
             shutil.copy2(custom_cases_dat, root_custom_cases_dat)
 
-        root_custom_cases = os.path.join(dist_folder, "custom_cases.json")
-        if not os.path.exists(root_custom_cases) and os.path.exists(custom_cases_file):
-            shutil.copy2(custom_cases_file, root_custom_cases)
+        # Remove any legacy unencrypted custom_cases.json if present
+        legacy_json = os.path.join(dist_folder, "custom_cases.json")
+        if os.path.exists(legacy_json):
+            os.remove(legacy_json)
 
         print("\n" + "=" * 65)
         print("  BUILD SUCCESSFUL!  ")
