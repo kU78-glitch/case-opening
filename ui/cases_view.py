@@ -949,6 +949,11 @@ class CasesView(ctk.CTkFrame):
         if hasattr(self, "preview_grid_frame"):
             self._update_case_preview(case_name)
 
+        # Pre-download all item images for this case in background so they're ready before spin
+        if "items" in case_data:
+            image_loader.prefetch_case_images(case_data["items"])
+
+
     def _toggle_actions_menu(self):
         """Opens or closes the compact context menu for case actions (⋮)."""
         if hasattr(self, "_actions_menu_frame") and self._actions_menu_frame is not None and self._actions_menu_frame.winfo_exists():

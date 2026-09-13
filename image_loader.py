@@ -105,13 +105,16 @@ def download_skin_image_async(skin_name: str, on_complete=None):
                     f.write(img_data)
                 os.replace(tmp_path, target_path)
 
-                # Clear PIL cache for this skin so newly downloaded image is loaded
+                # Clear all caches for this skin so the newly downloaded image is loaded next render
                 for k in list(_PIL_CACHE.keys()):
                     if k.startswith(skin_name):
                         del _PIL_CACHE[k]
                 for k in list(_CTK_CACHE.keys()):
                     if k.startswith(skin_name):
                         del _CTK_CACHE[k]
+                for k in list(_TK_CACHE.keys()):
+                    if k.startswith(f"tk_{skin_name}"):
+                        del _TK_CACHE[k]
 
                 if on_complete:
                     on_complete()
@@ -267,3 +270,14 @@ def get_gold_special_tk_photo(size: Tuple[int, int] = (44, 32)) -> ImageTk.Photo
     _GOLD_CARD_PHOTO_CACHE[cache_key] = photo
     return photo
 
+
+def prefetch_case_images(items: dict):
+    """
+    Pre-downloads all skin/knife images for every item in a case's item pool.
+    Call whenever a new case is selected so images are ready before the user spins.
+    items: dict mapping rarity -> list of (name, color) tuples or just names.
+    """
+    for rarity_items in items.values():
+        for entry in rarity_items:
+            name = entry[0] if isinstance(entry, (list, tuple)) else entry
+            download_skin_image_async(name)
