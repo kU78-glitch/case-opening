@@ -1602,225 +1602,50 @@ class CasesView(ctk.CTkFrame):
         self.on_state_changed()
         self.game.save()
 
-        kept_results = [res for res in opened_results if not res[1]]
+        # Show toast notification for every drop — no modal ever
         auto_sold_results = [res for res in opened_results if res[1]]
+        kept_results     = [res for res in opened_results if not res[1]]
 
-        # If ALL items dropped were auto-sold, skip the modal completely!
-        if not kept_results:
-            self.sound.play_sell()
-            if len(auto_sold_results) == 1:
-                it, _, val = auto_sold_results[0]
-                st = "★ " if it.is_st else ""
+        if len(opened_results) == 1:
+            it, auto_sold, val = opened_results[0]
+            st = "★ " if it.is_st else ""
+            r_color = RARITY_COLORS.get(it.rarity, SUCCESS_GREEN)
+            if auto_sold:
+                self.sound.play_sell()
                 self._show_toast(
                     f"⚡ Auto-sold {st}{it.name} [{it.quality}] for +${val:,.2f}!",
-                    SUCCESS_GREEN
+                    SUCCESS_GREEN,
+                    5000
                 )
             else:
                 self._show_toast(
-                    f"⚡ Auto-sold {len(auto_sold_results)} items for +${auto_sold_total:,.2f} directly to Balance!",
-                    SUCCESS_GREEN
+                    f"🎁 Got: {st}{it.name} [{it.quality} • {it.wear_float:.4f}] (${val:,.2f})",
+                    r_color,
+                    5000
                 )
-            return
-
-        # If some items were auto-sold in a multi-open, show toast for them
-        if auto_sold_results:
-            self._show_toast(
-                f"⚡ Auto-sold {len(auto_sold_results)} item(s) for +${auto_sold_total:,.2f}!",
-                SUCCESS_GREEN
-            )
-
-        # Display rich winning item modal ONLY for non-auto-sold items
-        self._show_win_modal(kept_results)
-
-    def _show_win_modal(self, opened_results: List):
-        """Displays a dedicated pop-up window with 200x200 px skin images inside a glowing rarity-colored frame."""
-        if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
-            self._win_modal.destroy()
-
-        items = [res[0] if isinstance(res, (list, tuple)) else res for res in opened_results]
-        if not items:
-            return
-
-        self._win_modal = ctk.CTkFrame(
-            self,
-            fg_color="#0d0f17",
-            border_width=3,
-            border_color="#ffd700" if any(it.rarity == "Rare Special" for it in items) else "#3b82f6",
-            corner_radius=16
-        )
-        self._win_modal.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.76, relheight=0.82)
-        self._win_modal.lift()
-
-        # Modal Header
-        top_bar = ctk.CTkFrame(self._win_modal, fg_color="transparent")
-        top_bar.pack(fill="x", padx=20, pady=(16, 8))
-
-        is_multi = len(items) > 1
-        modal_title = "🎉 UNBOXING COMPLETED!" if is_multi else "🎉 NEW ITEM UNBOXED!"
-        ctk.CTkLabel(
-            top_bar,
-            text=modal_title,
-            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
-            text_color="#ffd700" if any(it.rarity == "Rare Special" for it in items) else TEXT_MAIN
-        ).pack(side="left")
-
-        # Multi-drop: Quick Sell All & Close button
-        if is_multi:
-            total_sell_val = sum(res[2] if isinstance(res, (list, tuple)) else self.game.get_item_value(res) for res in opened_results)
-            def sell_all_handler():
-                for res in list(opened_results):
-                    it_to_sell = res[0] if isinstance(res, (list, tuple)) else res
-                    pv = res[2] if isinstance(res, (list, tuple)) else self.game.get_item_value(res)
-                    if it_to_sell in self.game.inventory:
-                        idx = self.game.inventory.index(it_to_sell)
-                        self.game.sell_item(idx)
-                    else:
-                        self.game.balance = round(self.game.balance + pv, 2)
-                        self.game.stats.money_earned_from_selling = round(
-                            self.game.stats.money_earned_from_selling + pv, 2
-                        )
+        else:
+            total_val = sum(res[2] for res in opened_results)
+            sold_count = len(auto_sold_results)
+            kept_count = len(kept_results)
+            if sold_count and not kept_count:
                 self.sound.play_sell()
-                self.on_state_changed()
-                self.game.save()
-                if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
-                    self._win_modal.destroy()
-
-            sell_all_btn = ctk.CTkButton(
-                top_bar,
-                text=f"⚡ Quick Sell All (+${total_sell_val:,.2f})",
-                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                fg_color="#dc2626",
-                hover_color="#b91c1c",
-                height=30,
-                corner_radius=6,
-                command=sell_all_handler
-            )
-            sell_all_btn.pack(side="right", padx=(0, 10))
-
-        close_btn = ctk.CTkButton(
-            top_bar,
-            text="✕ Collect & Close",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            fg_color="#374151",
-            hover_color="#4b5563",
-            width=120,
-            height=30,
-            corner_radius=6,
-            command=self._win_modal.destroy
-        )
-        close_btn.pack(side="right")
-
-        # Cards Host
-        cards_host = ctk.CTkFrame(self._win_modal, fg_color="transparent")
-        cards_host.pack(fill="both", expand=True, padx=20, pady=(0, 14))
-
-        remaining_unsold = list(items)
-
-        # Render items side-by-side
-        for entry in opened_results:
-            if isinstance(entry, (list, tuple)):
-                it, auto_sold, item_val = entry[0], entry[1], entry[2]
+                self._show_toast(
+                    f"⚡ Auto-sold {sold_count} item(s) for +${total_val:,.2f} directly to Balance!",
+                    SUCCESS_GREEN,
+                    5000
+                )
+            elif sold_count:
+                self.sound.play_sell()
+                kept_val = sum(res[2] for res in kept_results)
+                self._show_toast(
+                    f"🎁 Unboxed {len(opened_results)} items — {kept_count} kept (${kept_val:,.2f}), {sold_count} auto-sold (${sum(r[2] for r in auto_sold_results):,.2f})",
+                    SUCCESS_GREEN,
+                    6000
+                )
             else:
-                it = entry
-                auto_sold = False
-                item_val = self.game.get_item_value(it)
+                self._show_toast(
+                    f"🎁 Unboxed {len(opened_results)} items! Total value: ${total_val:,.2f}",
+                    SUCCESS_GREEN,
+                    5000
+                )
 
-            r_color = RARITY_COLORS.get(it.rarity, "#4b69ff")
-            val = item_val
-
-            # Glowing rarity-bordered card
-            card = ctk.CTkFrame(
-                cards_host,
-                fg_color="#141722",
-                border_width=3,
-                border_color=r_color,
-                corner_radius=14
-            )
-            card.pack(side="left", fill="both", expand=True, padx=8, pady=4)
-
-            # Rarity tag pill
-            pill = ctk.CTkFrame(card, fg_color=r_color, corner_radius=10, height=24)
-            pill.pack(pady=(12, 4))
-            ctk.CTkLabel(
-                pill,
-                text=f"  {it.rarity.upper()}  ",
-                font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-                text_color="#ffffff" if it.rarity != "Mil-Spec" else "#111827"
-            ).pack(padx=6, pady=2)
-
-            # 200x200 px Centered Skin Image
-            img_size = (180, 140) if is_multi else (220, 170)
-            img = image_loader.get_skin_image(it.name, rarity=it.rarity, size=img_size)
-            ctk.CTkLabel(card, text="", image=img).pack(pady=(8, 6))
-
-            # Weapon & Skin Title
-            st_badge = "★ StatTrak™ " if it.is_st else ""
-            st_color = "#f97316" if it.is_st else TEXT_MAIN
-            ctk.CTkLabel(
-                card,
-                text=f"{st_badge}{it.name}",
-                font=ctk.CTkFont(family="Segoe UI", size=15 if is_multi else 17, weight="bold"),
-                text_color=st_color,
-                wraplength=260
-            ).pack(pady=(0, 4), padx=10)
-
-            # Quality and Float details
-            ctk.CTkLabel(
-                card,
-                text=f"{it.quality}  •  Float: {it.wear_float:.5f}",
-                font=ctk.CTkFont(family="Segoe UI", size=11),
-                text_color=TEXT_MUTED
-            ).pack(pady=(0, 6))
-
-            # Value badge
-            ctk.CTkLabel(
-                card,
-                text=f"Est. Value: ${val:,.2f}",
-                font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
-                text_color=SUCCESS_GREEN
-            ).pack(pady=(0, 8))
-
-            # Action / Quick Sell Button
-            def make_quick_sell_handler(item_to_sell: Item, price_val: float, btn: ctk.CTkButton):
-                def handler():
-                    # Find item in game inventory
-                    if item_to_sell in self.game.inventory:
-                        idx = self.game.inventory.index(item_to_sell)
-                        sold_val = self.game.sell_item(idx)
-                    else:
-                        # Direct credit fallback
-                        sold_val = price_val
-                        self.game.balance = round(self.game.balance + sold_val, 2)
-                        self.game.stats.money_earned_from_selling = round(
-                            self.game.stats.money_earned_from_selling + sold_val, 2
-                        )
-                    self.sound.play_sell()
-                    self.on_state_changed()
-                    self.game.save()
-
-                    if item_to_sell in remaining_unsold:
-                        remaining_unsold.remove(item_to_sell)
-
-                    # For single item unboxing OR when all items are sold, immediately close modal
-                    if not is_multi or len(remaining_unsold) == 0:
-                        if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
-                            self._win_modal.destroy()
-                    else:
-                        btn.configure(
-                            text=f"✅ Sold (+${sold_val:,.2f})",
-                            state="disabled",
-                            fg_color="#374151"
-                        )
-                return handler
-
-            sell_btn = ctk.CTkButton(
-                card,
-                text=f"⚡ Quick Sell (+${val:,.2f})",
-                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                fg_color="#dc2626",
-                hover_color="#b91c1c",
-                height=32,
-                corner_radius=8
-            )
-            sell_btn.configure(command=make_quick_sell_handler(it, val, sell_btn))
-            sell_btn.pack(pady=(0, 10), padx=20, fill="x")
