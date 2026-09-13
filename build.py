@@ -1,5 +1,5 @@
 """
-build.py - Standalone Windows Executable (.exe) Packager for CS2 Case Opening Simulator
+build.py - Standalone Windows Executable (.exe) Packager for Case Opening Simulator
 Packages the application into a standalone distribution with all assets, sound effects, and custom case templates.
 """
 import os
@@ -9,7 +9,7 @@ import shutil
 
 def build_executable():
     print("=" * 65)
-    print("  CS2 Case Opening Simulator - Windows Executable (.exe) Build  ")
+    print("  Case Opening Simulator - Windows Executable (.exe) Build  ")
     print("=" * 65)
 
     base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -58,7 +58,7 @@ def build_executable():
         "--noconfirm",
         "--onedir",
         "--windowed",
-        "--name", "CS2_Case_Opening_Simulator",
+        "--name", "Case_Opening_Simulator",
         "--contents-directory", "_internal",
         "--add-data", "assets;_internal/assets",
         "--add-data", "custom_cases.json;.",
@@ -74,9 +74,9 @@ def build_executable():
 
     if result.returncode == 0:
         dist_dir = os.path.join(base_dir, "dist")
-        dist_folder = os.path.join(dist_dir, "CS2_Case_Opening_Simulator")
-        exe_path = os.path.join(dist_folder, "CS2_Case_Opening_Simulator.exe")
-        zip_path = os.path.join(dist_dir, "CS2_Case_Opening_Simulator.zip")
+        dist_folder = os.path.join(dist_dir, "Case_Opening_Simulator")
+        exe_path = os.path.join(dist_folder, "Case_Opening_Simulator.exe")
+        zip_path = os.path.join(dist_dir, "Case_Opening_Simulator.zip")
 
         # Ensure custom_cases.json is present in the distribution root
         root_custom_cases = os.path.join(dist_folder, "custom_cases.json")
@@ -90,11 +90,11 @@ def build_executable():
         print(f"[OK] Executable binary: {exe_path}")
 
         # 6. Create clean ZIP archive of the distribution
-        print("\n[+] Creating ZIP archive: CS2_Case_Opening_Simulator.zip...")
+        print("\n[+] Creating ZIP archive: Case_Opening_Simulator.zip...")
         if os.path.exists(zip_path):
             os.remove(zip_path)
         shutil.make_archive(
-            base_name=os.path.join(dist_dir, "CS2_Case_Opening_Simulator"),
+            base_name=os.path.join(dist_dir, "Case_Opening_Simulator"),
             format="zip",
             root_dir=dist_folder
         )
