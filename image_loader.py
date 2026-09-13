@@ -59,9 +59,20 @@ def _load_cdn_index():
         except Exception:
             _CDN_INDEX = {}
 
+ASSETS_DIR = config.get_resource_path("assets")
+
+def clean_lookup_key(name: str) -> str:
+    """Produces a clean filesystem key for skin names, stripping stars, stattraks, and punctuation."""
+    clean = re.sub(r'^[★\*\[\]\(\)\s]+', '', name).strip().lower()
+    clean = clean.replace('stattrak™', '').replace('stattrak', '').strip()
+    clean = re.sub(r'[^a-z0-9_-]', '_', clean)
+    clean = re.sub(r'_+', '_', clean).strip('_')
+    return clean
+
 def get_cached_file_path(skin_name: str) -> str:
     """Finds existing file path in writable dir, bundled resource dir, or default target."""
-    filename = sanitize_filename(skin_name)
+    c_key = clean_lookup_key(skin_name)
+    filename = f"{c_key}.png"
     target_writable = os.path.join(WRITABLE_SKINS_DIR, filename)
     if os.path.exists(target_writable):
         return target_writable
@@ -71,6 +82,81 @@ def get_cached_file_path(skin_name: str) -> str:
         return target_bundled
 
     return target_writable
+
+def find_local_skin_file(skin_name: str, rarity: str = "Mil-Spec") -> Optional[str]:
+    """
+    Comprehensive fallback search for a skin or knife image on disk.
+    Chain: Exact Skin PNG -> Fuzzy Match PNG -> Same Weapon Family PNG -> Knife Silhouette -> Gold Badge.
+    """
+    c_key = clean_lookup_key(skin_name)
+    fn = f"{c_key}.png"
+
+    # 1. Exact sanitized filename
+    for d in [WRITABLE_SKINS_DIR, SKINS_DIR]:
+        p = os.path.join(d, fn)
+        if os.path.exists(p):
+            return p
+
+    # 2. Finish-only match if name contains |
+    if "|" in skin_name:
+        finish = clean_lookup_key(skin_name.split("|")[-1])
+        fn_finish = f"{finish}.png"
+        for d in [WRITABLE_SKINS_DIR, SKINS_DIR]:
+            p = os.path.join(d, fn_finish)
+            if os.path.exists(p):
+                return p
+
+    # 3. Fuzzy search in skin directories
+    weapon_model = clean_lookup_key(skin_name.split("|")[0])
+    finish_words = [w for w in clean_lookup_key(skin_name.split("|")[-1]).split("_")
+                    if len(w) > 2 and w not in ("the", "knife", "phase")] if "|" in skin_name else []
+
+    best_file = None
+    best_score = 0
+    for d in [WRITABLE_SKINS_DIR, SKINS_DIR]:
+        if not os.path.exists(d):
+            continue
+        for fname in os.listdir(d):
+            if not fname.endswith(".png") or fname in ("gold_icon.png", "knife_silhouette.png"):
+                continue
+            name_no_ext = fname[:-4]
+            score = 0
+            if weapon_model in name_no_ext:
+                score += 20
+            for fw in finish_words:
+                if fw in name_no_ext:
+                    score += 5
+            if score > best_score:
+                best_score = score
+                best_file = os.path.join(d, fname)
+
+    if best_file and best_score >= 20:
+        return best_file
+
+    # 4. Fallback for Knives / Gloves / Rare Special
+    is_knife = rarity == "Rare Special" or any(k in skin_name.lower() for k in ["knife", "bayonet", "karambit", "daggers", "gloves"])
+    if is_knife:
+        # Same knife family (e.g. any kukri_knife_*.png if a Kukri knife is requested)
+        if best_file and best_score >= 10:
+            return best_file
+
+        # Generic Knife Silhouette PNG
+        for d in [ASSETS_DIR, SKINS_DIR]:
+            p = os.path.join(d, "knife_silhouette.png")
+            if os.path.exists(p):
+                return p
+
+        # Generic Gold Badge
+        for d in [ASSETS_DIR, SKINS_DIR]:
+            p = os.path.join(d, "gold_icon.png")
+            if os.path.exists(p):
+                return p
+
+    # 5. Fallback for Guns (same weapon family)
+    if best_file and best_score >= 10:
+        return best_file
+
+    return None
 
 def download_skin_image_async(skin_name: str, on_complete=None):
     """Downloads skin image in background thread if not present."""
@@ -125,14 +211,40 @@ def download_skin_image_async(skin_name: str, on_complete=None):
 
     threading.Thread(target=worker, daemon=True).start()
 
+def create_gold_special_card(size: Tuple[int, int] = (44, 32)) -> Image.Image:
+    """
+    Returns the official CS2 Gold Special Rare Item badge icon.
+    Loads assets/gold_icon.png directly, or renders a crisp gold badge.
+    Never draws empty missing glyph boxes [].
+    """
+    for d in [ASSETS_DIR, SKINS_DIR]:
+        p = os.path.join(d, "gold_icon.png")
+        if os.path.exists(p):
+            try:
+                with Image.open(p) as src:
+                    return src.convert("RGBA").resize(size, Image.Resampling.LANCZOS)
+            except Exception:
+                pass
+
+    # Procedural fallback without font dependency
+    w, h = size
+    img = Image.new("RGBA", size, (25, 18, 5, 255))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([1, 1, w - 2, h - 2], outline=(255, 215, 0, 255), width=2)
+    draw.rectangle([3, 3, w - 4, h - 4], fill=(50, 36, 10, 255))
+    return img
+
 def create_placeholder_image(skin_name: str, rarity: str = "Mil-Spec", size: Tuple[int, int] = (100, 100)) -> Image.Image:
-    """Creates a sleek, stylized dark placeholder with rarity badge if image is not downloaded."""
+    """Creates a stylized placeholder. For Rare Special/knives, returns the gold badge."""
+    is_knife = rarity == "Rare Special" or any(k in skin_name.lower() for k in ["knife", "bayonet", "karambit", "daggers", "gloves"])
+    if is_knife:
+        return create_gold_special_card(size)
+
     rarity_color_map = {
-        "Mil-Spec": (75, 105, 255),
-        "Restricted": (136, 71, 255),
-        "Classified": (211, 44, 230),
-        "Covert": (235, 75, 75),
-        "Rare Special": (255, 215, 0)
+        "Mil-Spec":   (75,  105, 255),
+        "Restricted": (136,  71, 255),
+        "Classified": (211,  44, 230),
+        "Covert":     (235,  75,  75),
     }
     accent_rgb = rarity_color_map.get(rarity, (100, 116, 139))
     bg_rgb = (18, 21, 28)
@@ -141,29 +253,49 @@ def create_placeholder_image(skin_name: str, rarity: str = "Mil-Spec", size: Tup
     draw = ImageDraw.Draw(img)
     w, h = size
 
-    # Inner subtle glow rectangle
+    # Sleek border glow
     draw.rectangle([2, 2, w - 3, h - 3], outline=accent_rgb, width=2)
+    # Bottom accent line
+    draw.rectangle([2, h - 6, w - 3, h - 3], fill=accent_rgb)
 
-    # Diagonal accent line
-    draw.line([(6, h - 12), (w - 6, 12)], fill=(accent_rgb[0]//2, accent_rgb[1]//2, accent_rgb[2]//2), width=2)
+    # Clean ASCII weapon model initials
+    clean = re.sub(r'^[★\*\[\]\(\)\s]+', '', skin_name).strip()
+    clean = re.sub(r'[^\x20-\x7E]', ' ', clean)
+    weapon_part = clean.split("|")[0].strip()
+    initials = "".join([p[0] for p in weapon_part.split()[:2] if p and p[0].isalnum()]).upper()
 
-    # Weapon initials
-    initials = "".join([part[0] for part in skin_name.replace("★", "").split()[:3] if part]).upper()
-    try:
-        draw.text((w // 2, h // 2), initials, fill=(240, 240, 240), anchor="mm")
-    except Exception:
-        draw.text((w // 4, h // 3), initials, fill=(240, 240, 240))
+    font = None
+    for fpath in ["C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/arial.ttf"]:
+        if os.path.exists(fpath):
+            try:
+                font = ImageFont.truetype(fpath, max(10, min(18, h // 3)))
+                break
+            except Exception:
+                continue
+
+    if initials:
+        try:
+            if font:
+                draw.text((w // 2, h // 2 - 4), initials, fill=(220, 220, 220), font=font, anchor="mm")
+            else:
+                draw.text((w // 2 - len(initials) * 3, h // 2 - 6), initials, fill=(220, 220, 220))
+        except Exception:
+            pass
 
     return img
 
 def get_pil_image(skin_name: str, rarity: str = "Mil-Spec", size: Tuple[int, int] = (100, 100)) -> Image.Image:
-    """Returns a resized PIL Image for a skin, downloading asynchronously if missing."""
+    """
+    Returns a resized PIL Image for a skin.
+    Fallback chain: cached PNG -> sanitized-name PNG -> knife silhouette -> gold badge -> dark placeholder.
+    """
     cache_key = f"{skin_name}_{size[0]}x{size[1]}"
     if cache_key in _PIL_CACHE:
         return _PIL_CACHE[cache_key]
 
-    file_path = get_cached_file_path(skin_name)
-    if os.path.exists(file_path):
+    # Full fallback disk search
+    file_path = find_local_skin_file(skin_name, rarity)
+    if file_path and os.path.exists(file_path):
         try:
             with Image.open(file_path) as src:
                 img = src.convert("RGBA").resize(size, Image.Resampling.LANCZOS)
@@ -175,9 +307,8 @@ def get_pil_image(skin_name: str, rarity: str = "Mil-Spec", size: Tuple[int, int
     # Trigger background download if missing
     download_skin_image_async(skin_name)
 
-    # Return placeholder
+    # Return styled placeholder
     placeholder = create_placeholder_image(skin_name, rarity, size)
-    _PIL_CACHE[cache_key] = placeholder
     return placeholder
 
 def get_skin_image(skin_name: str, rarity: str = "Mil-Spec", size: Tuple[int, int] = (100, 100)) -> ctk.CTkImage:
@@ -202,64 +333,12 @@ def get_tk_photo_image(skin_name: str, rarity: str = "Mil-Spec", size: Tuple[int
     _TK_CACHE[cache_key] = photo
     return photo
 
-
-def create_gold_special_card(size: Tuple[int, int] = (44, 32)) -> Image.Image:
-    """
-    Generates a procedural gold ★ icon image for Rare Special roulette cards.
-    No CDN download needed — always instant and correct.
-    """
-    w, h = size
-    img = Image.new("RGBA", size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    # Gold gradient-like background using layered rectangles (dark gold → bright gold)
-    layers = [
-        ((0,      0,      w,     h),     (45,  28,   0, 255)),   # darkest border ring
-        ((1,      1,  w - 1, h - 1),     (90,  60,   0, 255)),
-        ((2,      2,  w - 2, h - 2),     (140, 100,  0, 255)),
-        ((3,      3,  w - 3, h - 3),     (184, 134,  11, 255)),  # #b8860b DarkGoldenrod
-        ((4,      4,  w - 4, h - 4),     (212, 175,  55, 255)),  # #d4af37 Goldenrod
-    ]
-    for rect, color in layers:
-        draw.rectangle(rect, fill=color)
-
-    # Bright gold outer glow border
-    draw.rectangle([0, 0, w - 1, h - 1], outline=(255, 215, 0, 255), width=1)
-
-    # Centered ★ star symbol
-    star = "★"
-    star_font_size = max(10, h // 2)
-    try:
-        from PIL import ImageFont
-        font = ImageFont.truetype("segoeui.ttf", star_font_size)
-    except Exception:
-        font = None  # PIL default
-
-    cx, cy = w // 2, h // 2 - 1
-    # Draw shadow
-    shadow_offset = max(1, w // 22)
-    try:
-        draw.text((cx + shadow_offset, cy + shadow_offset), star, fill=(80, 50, 0, 180), font=font, anchor="mm")
-    except Exception:
-        draw.text((cx + shadow_offset - star_font_size // 2, cy + shadow_offset - star_font_size // 2),
-                  star, fill=(80, 50, 0, 180))
-
-    # Draw bright gold star
-    try:
-        draw.text((cx, cy), star, fill=(255, 235, 100, 255), font=font, anchor="mm")
-    except Exception:
-        draw.text((cx - star_font_size // 2, cy - star_font_size // 2), star, fill=(255, 235, 100, 255))
-
-    return img
-
-
 _GOLD_CARD_PHOTO_CACHE: Dict[str, ImageTk.PhotoImage] = {}
-
 
 def get_gold_special_tk_photo(size: Tuple[int, int] = (44, 32)) -> ImageTk.PhotoImage:
     """
-    Returns a cached ImageTk.PhotoImage of the gold ★ special item card.
-    Always instant — no download, no CDN lookup.
+    Returns a cached ImageTk.PhotoImage of the gold ★ special item badge.
+    Always instant and authentic.
     """
     cache_key = f"gold_special_{size[0]}x{size[1]}"
     if cache_key in _GOLD_CARD_PHOTO_CACHE:
@@ -270,14 +349,13 @@ def get_gold_special_tk_photo(size: Tuple[int, int] = (44, 32)) -> ImageTk.Photo
     _GOLD_CARD_PHOTO_CACHE[cache_key] = photo
     return photo
 
-
 def prefetch_case_images(items: dict):
     """
     Pre-downloads all skin/knife images for every item in a case's item pool.
     Call whenever a new case is selected so images are ready before the user spins.
-    items: dict mapping rarity -> list of (name, color) tuples or just names.
     """
     for rarity_items in items.values():
         for entry in rarity_items:
             name = entry[0] if isinstance(entry, (list, tuple)) else entry
             download_skin_image_async(name)
+

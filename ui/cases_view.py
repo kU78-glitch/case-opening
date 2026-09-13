@@ -1334,18 +1334,24 @@ class CasesView(ctk.CTkFrame):
                     card_top = y - card_half_h
                     card_bot = y + card_half_h
 
-                    # All cards: same dark background — gold gets gold border + gold accent bar
+                    # While spinning, Gold items show generic CS2 Gold Badge icon (authentic mystery).
+                    # When stopped / halted, reveal the specific knife image and exact name.
+                    is_spinning = self.spin_running
+                    hide_knife_details = is_gold and is_spinning
+
                     accent_color = "#ffd700" if is_gold else rarity_color
                     if is_gold:
                         outline = "#ffe566" if is_center else "#d4af37"
                         bdr_w   = 3 if is_center else 2
+                        card_bg = "#191508" if is_spinning else "#12151e"
                     else:
                         outline = "#fbbf24" if is_center else "#1e2433"
                         bdr_w   = 3 if is_center else 1
+                        card_bg = "#12151e"
 
-                    # Dark card body (same for all rarities)
+                    # Card body
                     canvas.create_rectangle(x - card_w, card_top, x + card_w, card_bot,
-                                            fill="#12151e", outline=outline, width=bdr_w)
+                                            fill=card_bg, outline=outline, width=bdr_w)
                     # Bottom rarity accent bar (6px tall) — gold for Rare Special
                     canvas.create_rectangle(x - card_w, card_bot - 6, x + card_w, card_bot,
                                             fill=accent_color, outline="")
@@ -1357,12 +1363,18 @@ class CasesView(ctk.CTkFrame):
                     img_size = (img_w, img_h)
                     img_cy = card_top + 4 + img_h // 2
 
-                    # Load actual skin/knife image for every card (same path for gold and normal)
-                    skin_part  = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
-                    st_mark    = "* " if is_gold else ("[ST] " if item.get("is_st") else "")
-                    label_text = f"{st_mark}{skin_part[:14]}"
-                    text_fill  = "#ffd700" if is_gold else "#e8eaf0"
-                    photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=img_size)
+                    if hide_knife_details:
+                        # Generic CS2 Gold Badge icon while spinning
+                        photo = image_loader.get_gold_special_tk_photo(size=img_size)
+                        label_text = "* SPECIAL *"
+                        text_fill  = "#ffd700"
+                    else:
+                        # Reveal specific weapon/knife image
+                        skin_part  = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
+                        st_mark    = "* " if is_gold else ("[ST] " if item.get("is_st") else "")
+                        label_text = f"{st_mark}{skin_part[:14]}"
+                        text_fill  = "#ffd700" if is_gold else "#e8eaf0"
+                        photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=img_size)
 
                     if photo:
                         self._photo_refs.append(photo)   # keep alive — prevents GC
@@ -1477,26 +1489,26 @@ class CasesView(ctk.CTkFrame):
         self._inline_bonus_outcomes = {}
         self._inline_bonus_upgraded_names = {}
 
-        finishes = ["Doppler Phase 4", "Fade (99%)", "Lore", "Marble Fade Fire & Ice", "Gamma Doppler Emerald"]
+        finishes = ["Doppler Phase 4", "Fade", "Lore", "Marble Fade Fire & Ice", "Gamma Doppler Emerald", "Slaughter"]
 
         for row_idx in gold_row_indices:
             gold_item = self.winning_items[row_idx]
-            knife_base = gold_item.name.split("|")[0].strip()
+            knife_base = gold_item.name.split("|")[0].strip().lstrip("★ ").strip()
             chosen_finish = random.choice(finishes)
-            upgraded_name = f"{knife_base} | {chosen_finish}"
+            upgraded_name = f"★ {knife_base} | {chosen_finish}"
             self._inline_bonus_upgraded_names[row_idx] = upgraded_name
 
             # 50% chance of upgraded knife
             is_upgrade = random.random() < 0.50
             self._inline_bonus_outcomes[row_idx] = is_upgrade
 
-            # Strip leading ★ so we never get "★ BASE: ★ Kukri..."
+            # Clean name strings
             clean_base = gold_item.name.lstrip("★ ").strip()
             clean_upgrade = upgraded_name.lstrip("★ ").strip()
 
             bonus_tile_types = [
-                {"type": "UPGRADE", "name": upgraded_name,      "title": f"⬆ {clean_upgrade[:26]}", "color": "#10ffaa", "bg": "#003320"},
-                {"type": "BASE",    "name": gold_item.name,     "title": f"★ {clean_base[:26]}",     "color": "#ffd700", "bg": "#3d2800"}
+                {"type": "UPGRADE", "name": upgraded_name, "clean_name": clean_upgrade, "title": f"⬆ {clean_upgrade[:26]}", "color": "#10ffaa"},
+                {"type": "BASE",    "name": gold_item.name, "clean_name": clean_base,    "title": f"★ {clean_base[:26]}",     "color": "#ffd700"}
             ]
 
             seq = []
@@ -1520,7 +1532,7 @@ class CasesView(ctk.CTkFrame):
         self._step_inline_gold_respin()
 
     def _render_inline_bonus_row(self, row_idx: int, scroll_px: float):
-        """Draws the upgrade strip on a specific row canvas."""
+        """Draws the upgrade strip on a specific row canvas with real knife images and dark cards."""
         canvas = self.spin_canvases[row_idx]
         seq = self._inline_bonus_sequences.get(row_idx, [])
         if not seq:
@@ -1530,11 +1542,15 @@ class CasesView(ctk.CTkFrame):
         canvas_center_x = 340
         h = int(canvas.cget("height"))
         center_y = h // 2
-        card_half_h = min(26, h // 2 - 4)
+        card_half_h = h // 2 - 4   # Full height matching canvas!
 
         item_w = self._inline_respin_item_w
         cur_item = int(scroll_px / item_w)
         sub_px = scroll_px - (cur_item * item_w)
+
+        card_w = 98
+        card_top = center_y - card_half_h
+        card_bot = center_y + card_half_h
 
         for offset in range(-2, 3):
             idx = cur_item + offset
@@ -1544,36 +1560,45 @@ class CasesView(ctk.CTkFrame):
                 y = center_y
 
                 is_center = abs(x - canvas_center_x) < item_w * 0.45
-                outline = "#fbbf24" if is_center else "#1e293b"
-                width = 2 if is_center else 1
+                is_up = (tile["type"] == "UPGRADE")
 
+                outline = "#ffe566" if is_center else ("#10b981" if is_up else "#d4af37")
+                bdr_w = 3 if is_center else 2
+                accent_color = "#10b981" if is_up else "#ffd700"
+
+                # Dark card body (matching main roulette style!)
                 canvas.create_rectangle(
-                    x - 98, y - card_half_h, x + 98, y + card_half_h,
-                    fill=tile["bg"], outline=outline, width=width
+                    x - card_w, card_top, x + card_w, card_bot,
+                    fill="#12151e", outline=outline, width=bdr_w
+                )
+                # Bottom accent bar (6px tall)
+                canvas.create_rectangle(
+                    x - card_w, card_bot - 6, x + card_w, card_bot,
+                    fill=accent_color, outline=""
                 )
 
-                # Image: 80×(card_height-22) to leave room for text label
-                tile_img_h = max(32, card_half_h * 2 - 22)
-                tile_img_size = (80, tile_img_h)
-                tile_name = tile.get("name", "")
-                img_cy = y - card_half_h + 4 + tile_img_h // 2   # top-aligned inside card
+                # Render actual knife image inside the re-spin card for both BASE and UPGRADE
+                label_h = 18
+                tile_img_h = max(35, card_half_h * 2 - label_h - 8)
+                tile_img_w = min(150, card_w * 2 - 16)
+                tile_img_size = (tile_img_w, tile_img_h)
+                img_cy = card_top + 4 + tile_img_h // 2
 
-                if tile["type"] == "UPGRADE" and tile_name:
-                    tile_photo = image_loader.get_tk_photo_image(tile_name, rarity="Rare Special", size=tile_img_size)
-                else:
-                    tile_photo = image_loader.get_gold_special_tk_photo(size=tile_img_size)
+                tile_name = tile.get("name", "")
+                tile_photo = image_loader.get_tk_photo_image(tile_name, rarity="Rare Special", size=tile_img_size)
 
                 if tile_photo:
                     self._photo_refs.append(tile_photo)   # GC-safe
                     canvas.create_image(x, img_cy, image=tile_photo)
 
-                # Label below image
+                # Clean label below knife image
+                label_text = tile["title"]
                 canvas.create_text(
-                    x, y + card_half_h - 10,
-                    text=tile["title"],
+                    x, card_bot - label_h // 2 - 2,
+                    text=label_text,
                     fill=tile["color"],
                     font=("Segoe UI", 9, "bold"),
-                    width=188
+                    width=card_w * 2 - 8
                 )
 
         # Golden center line
