@@ -115,12 +115,26 @@ class CasesView(ctk.CTkFrame):
             selector_row,
             variable=self.selected_case_var,
             values=case_names,
-            width=280,
+            width=260,
             height=36,
             font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
             command=lambda _: self.update_case_price()
         )
         self.case_menu.pack(side="left", padx=(10, 6))
+
+        # View Case Drops Button
+        self.preview_btn = ctk.CTkButton(
+            selector_row,
+            text="🔍 View Drops",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#1e222d",
+            hover_color="#2d3342",
+            text_color=TEXT_MAIN,
+            height=36,
+            corner_radius=8,
+            command=self._open_case_drops_modal
+        )
+        self.preview_btn.pack(side="left", padx=(0, 6))
 
         self.actions_btn = ctk.CTkButton(
             selector_row,
@@ -146,7 +160,7 @@ class CasesView(ctk.CTkFrame):
 
         # Action Controls: OPEN CASE + Multi-Count SegmentedButton
         btn_row = ctk.CTkFrame(container, fg_color="transparent")
-        btn_row.pack(pady=4)
+        btn_row.pack(pady=(4, 12))
 
         self.open_btn = ctk.CTkButton(
             btn_row,
@@ -199,49 +213,72 @@ class CasesView(ctk.CTkFrame):
         )
         self.skip_cb.pack(side="left", padx=10)
 
-        # Result Announcement Label
+        # Result Announcement Label (hidden by default, keeps API reference)
         self.rolling_label = ctk.CTkLabel(
             container,
-            text="Select case and click OPEN to spin!",
+            text="",
             font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
             text_color=TEXT_MAIN,
-            height=32
+            height=0
         )
-        self.rolling_label.pack(pady=4)
 
         # Dynamic Stacked Spinners Container
         self.spinner_card = ctk.CTkFrame(container, fg_color="#0b0d11", corner_radius=10)
-        self.spinner_card.pack(fill="x", padx=10, pady=4)
+        self.spinner_card.pack(fill="x", padx=10, pady=10)
 
         self.canvases_frame = ctk.CTkFrame(self.spinner_card, fg_color="transparent")
         self.canvases_frame.pack(fill="both", expand=True, padx=8, pady=8)
 
-        # Case Drops Preview Grid with Rarity-Colored Frames
-        self.preview_card = ctk.CTkFrame(container, fg_color=CARD_BG, corner_radius=10)
-        self.preview_card.pack(fill="both", expand=True, padx=10, pady=(6, 0))
-
-        preview_header = ctk.CTkFrame(self.preview_card, fg_color="transparent")
-        preview_header.pack(fill="x", padx=12, pady=(8, 4))
-
-        ctk.CTkLabel(
-            preview_header,
-            text="🔍 Case Drops Preview:",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color=TEXT_MAIN
-        ).pack(side="left")
-
-        # Static Grid Frame for Items in current case
-        self.preview_grid_frame = ctk.CTkFrame(self.preview_card, fg_color="transparent")
-        self.preview_grid_frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-
-    def _update_case_preview(self, case_name: str):
-        """Populates responsive preview grid with rarity-bordered skin cards and 100x100 images."""
-        for child in self.preview_grid_frame.winfo_children():
-            child.destroy()
-
+    def _open_case_drops_modal(self):
+        """Displays a dedicated pop-up modal showing all items and odds in the current case."""
+        case_name = self.selected_case_var.get()
         case_data = get_case(case_name)
         if not case_data or "items" not in case_data:
             return
+
+        if hasattr(self, "_drops_modal") and self._drops_modal is not None and self._drops_modal.winfo_exists():
+            self._drops_modal.destroy()
+
+        self._drops_modal = ctk.CTkFrame(
+            self,
+            fg_color="#0d0f17",
+            border_width=2,
+            border_color=ACCENT_BLUE,
+            corner_radius=14
+        )
+        self._drops_modal.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.82, relheight=0.84)
+        self._drops_modal.lift()
+
+        # Modal Header
+        m_top = ctk.CTkFrame(self._drops_modal, fg_color="transparent")
+        m_top.pack(fill="x", padx=18, pady=(14, 8))
+
+        ctk.CTkLabel(
+            m_top,
+            text=f"🔍 Drops Preview: {case_name}",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            text_color=TEXT_MAIN
+        ).pack(side="left")
+
+        close_m_btn = ctk.CTkButton(
+            m_top,
+            text="✕ Close",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            fg_color="#374151",
+            hover_color="#4b5563",
+            width=80,
+            height=28,
+            corner_radius=6,
+            command=self._drops_modal.destroy
+        )
+        close_m_btn.pack(side="right")
+
+        # Scrollable container for item cards
+        scroll_container = ctk.CTkScrollableFrame(
+            self._drops_modal,
+            fg_color="transparent"
+        )
+        scroll_container.pack(fill="both", expand=True, padx=14, pady=(0, 14))
 
         # Flatten items grouped from highest rarity to lowest
         items_by_rarity = case_data.get("items", {})
@@ -253,18 +290,16 @@ class CasesView(ctk.CTkFrame):
                 color = entry[1] if isinstance(entry, (list, tuple)) and len(entry) > 1 else "blue"
                 display_items.append((name, rarity, color))
 
-        # Show up to 12 featured items neatly in responsive columns (e.g. 6 cols x 2 rows)
-        num_cols = 6
+        num_cols = 5
         for col_idx in range(num_cols):
-            self.preview_grid_frame.grid_columnconfigure(col_idx, weight=1, uniform="prev_col")
+            scroll_container.grid_columnconfigure(col_idx, weight=1, uniform="modal_prev_col")
 
-        for idx, (name, rarity, color) in enumerate(display_items[:12]):
+        for idx, (name, rarity, color) in enumerate(display_items):
             r_border_color = RARITY_COLORS.get(rarity, "#4b69ff")
             price = get_item_market_price(name, rarity)
 
-            # Rarity-bordered item card
             card = ctk.CTkFrame(
-                self.preview_grid_frame,
+                scroll_container,
                 fg_color="#181c26",
                 border_width=2,
                 border_color=r_border_color,
@@ -274,12 +309,10 @@ class CasesView(ctk.CTkFrame):
             col = idx % num_cols
             card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
 
-            # Centered skin artwork (100x100)
             img = image_loader.get_skin_image(name, rarity=rarity, size=(90, 68))
             img_lbl = ctk.CTkLabel(card, text="", image=img)
             img_lbl.pack(pady=(4, 2))
 
-            # Skin name label (truncated if long)
             clean_name = name.split("|")[-1].strip() if "|" in name else name
             clean_name = clean_name[:16]
             ctk.CTkLabel(
@@ -289,13 +322,17 @@ class CasesView(ctk.CTkFrame):
                 text_color=TEXT_MAIN
             ).pack(padx=2)
 
-            # Price label
             ctk.CTkLabel(
                 card,
                 text=f"${price:,.2f}",
                 font=ctk.CTkFont(family="Segoe UI", size=9),
                 text_color=r_border_color
             ).pack(pady=(0, 4))
+
+    def _update_case_preview(self, case_name: str):
+        """No-op or updates active preview modal if currently visible."""
+        if hasattr(self, "_drops_modal") and self._drops_modal is not None and self._drops_modal.winfo_exists():
+            self._open_case_drops_modal()
 
     def _get_max_unlocked_cases(self) -> int:
         if self.game.prestige_level >= 2:
@@ -1062,41 +1099,6 @@ class CasesView(ctk.CTkFrame):
         self.on_state_changed(check_achievements=False)
         self.game.save()
 
-        # Fast Open / Skip Animation check
-        if self.skip_animation_var.get():
-            # Check for Gold drop in winning items
-            gold_items = [it for it in self.winning_items if it.rarity == "Rare Special"]
-            for git in gold_items:
-                # 50% upgrade chance
-                if random.random() < 0.50:
-                    finishes = ["Doppler Phase 4", "Fade (99%)", "Lore", "Marble Fade Fire & Ice", "Gamma Doppler Emerald"]
-                    knife_base = git.name.split("|")[0].strip()
-                    git.name = f"{knife_base} | {random.choice(finishes)}"
-                    git.base_price = round(git.base_price * 1.50, 2)
-
-            # Build minimal spin sequence so _render_at_scroll can draw the winning item on the track
-            fake_count = self.SPIN_ITEM_COUNT
-            win_idx = fake_count - self.VISIBLE_RADIUS - 1
-            self.spin_sequences = []
-            for winning_item in self.winning_items:
-                row_seq = []
-                for i in range(fake_count):
-                    row_seq.append({
-                        "case_name": winning_item.case_name,
-                        "rarity": winning_item.rarity,
-                        "name": winning_item.name,
-                        "is_st": winning_item.is_st,
-                        "quality": winning_item.quality,
-                        "wear_float": winning_item.wear_float,
-                        "base_price": winning_item.base_price
-                    })
-                self.spin_sequences.append(row_seq)
-
-            # Display final landed outcome instantly on canvases
-            self._render_at_scroll(float(win_idx * self.ITEM_WIDTH))
-            self.finalize_multi_spin()
-            return
-
         self.start_multi_spin(case_name)
 
     def start_multi_spin(self, case_name: str):
@@ -1173,10 +1175,11 @@ class CasesView(ctk.CTkFrame):
         self._anim_scroll_px = 0.0
         self._last_tick_item = -1
 
-        # Animation duration: ~4 seconds base, reduced by spin_speed perk
-        base_duration = 4.0
+        # Animation duration: ~4 seconds base, or ~1.6s if Fast Open is enabled (2.5x faster), reduced by spin_speed perk
+        is_fast_open = self.skip_animation_var.get()
+        base_duration = 1.6 if is_fast_open else 4.0
         speed_mult = 1.0 + self.game.perks.get("spin_speed", 0.0)
-        self._anim_duration = max(1.5, base_duration / speed_mult)
+        self._anim_duration = max(0.5, base_duration / speed_mult)
         self._anim_start_time = time.monotonic()
 
         self._spin_step()
@@ -1292,11 +1295,13 @@ class CasesView(ctk.CTkFrame):
             self._render_at_scroll(self._anim_scroll_px)
 
             # Snap-back: recoil from the random landing offset to exact item center
+            is_fast_open = self.skip_animation_var.get()
             self._snap_from_px = self._anim_total_px
             self._snap_to_px = float(self._anim_target_item * self.ITEM_WIDTH)
-            self._snap_duration = 0.25  # 250ms smooth correction
-            # 200ms suspense pause before snap-back begins
-            self.after(200, self._start_snap_back)
+            self._snap_duration = 0.10 if is_fast_open else 0.25
+            # Suspense pause before snap-back begins
+            pause_ms = 80 if is_fast_open else 200
+            self.after(pause_ms, self._start_snap_back)
 
     def _start_snap_back(self):
         """Begin the snap-back recoil animation to center the winning item."""
@@ -1335,7 +1340,8 @@ class CasesView(ctk.CTkFrame):
                     self.case_menu.configure(state="normal")
                     self.finalize_multi_spin()
 
-            self.after(500, check_finalize)
+            finalize_delay = 180 if self.skip_animation_var.get() else 500
+            self.after(finalize_delay, check_finalize)
 
     def _start_inline_gold_respin(self, gold_row_indices: List[int]):
         """
@@ -1390,7 +1396,8 @@ class CasesView(ctk.CTkFrame):
         # Random landing shift within the center indicator
         landing_shift = random.uniform(-35, 35)
         self._inline_respin_total_px = float(win_slot_idx * bonus_item_w) + landing_shift
-        self._inline_respin_duration = 3.0
+        is_fast_open = self.skip_animation_var.get()
+        self._inline_respin_duration = 1.2 if is_fast_open else 3.0
         self._inline_respin_start_time = time.monotonic()
         self._inline_respin_last_tick = -1
 
@@ -1667,7 +1674,7 @@ class CasesView(ctk.CTkFrame):
                     height=32
                 ).pack(pady=(0, 10))
             else:
-                def make_quick_sell_handler(item_to_sell: Item, price_val: float):
+                def make_quick_sell_handler(item_to_sell: Item, price_val: float, btn: ctk.CTkButton):
                     def handler():
                         # Find item in game inventory
                         if item_to_sell in self.game.inventory:
@@ -1686,11 +1693,17 @@ class CasesView(ctk.CTkFrame):
                             self.sound.play_tick()
                         self.on_state_changed()
                         self.game.save()
-                        sell_btn.configure(
-                            text=f"✅ Sold (+${sold_val:,.2f})",
-                            state="disabled",
-                            fg_color="#374151"
-                        )
+
+                        # For single item unboxing, immediately close the modal
+                        if not is_multi:
+                            if hasattr(self, "_win_modal") and self._win_modal is not None and self._win_modal.winfo_exists():
+                                self._win_modal.destroy()
+                        else:
+                            btn.configure(
+                                text=f"✅ Sold (+${sold_val:,.2f})",
+                                state="disabled",
+                                fg_color="#374151"
+                            )
                     return handler
 
                 sell_btn = ctk.CTkButton(
@@ -1702,5 +1715,5 @@ class CasesView(ctk.CTkFrame):
                     height=32,
                     corner_radius=8
                 )
-                sell_btn.configure(command=make_quick_sell_handler(it, val))
+                sell_btn.configure(command=make_quick_sell_handler(it, val, sell_btn))
                 sell_btn.pack(pady=(0, 10), padx=20, fill="x")
