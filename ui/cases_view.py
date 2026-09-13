@@ -215,20 +215,30 @@ class CasesView(ctk.CTkFrame):
         self.seg_button.set("1x")
         self.seg_button.pack(side="left", padx=(0, 10), pady=6)
 
-        # Fast Open / Skip Animation Toggle
+        # Fast Open / Skip Animation Toggle (only box clickable)
+        fast_item = ctk.CTkFrame(btn_row, fg_color="transparent")
+        fast_item.pack(side="left", padx=10)
+
         self.skip_cb = ctk.CTkCheckBox(
-            btn_row,
-            text="⚡ Fast Open",
+            fast_item,
+            text="",
             variable=self.skip_animation_var,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color=TEXT_MAIN,
             checkmark_color="#000000",
             fg_color="#f59e0b",
             hover_color="#d97706",
-            width=110,
-            height=28
+            width=22,
+            height=22,
+            checkbox_width=22,
+            checkbox_height=22
         )
-        self.skip_cb.pack(side="left", padx=10)
+        self.skip_cb.pack(side="left", padx=(0, 6))
+
+        ctk.CTkLabel(
+            fast_item,
+            text="⚡ Fast Open",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=TEXT_MAIN
+        ).pack(side="left")
 
         # Auto-Sell Rarity Filter Checkboxes Row
         auto_sell_row = ctk.CTkFrame(container, fg_color="transparent")
@@ -259,21 +269,31 @@ class CasesView(ctk.CTkFrame):
                     self.game.save()
                 return toggle
 
+            tier_item = ctk.CTkFrame(auto_sell_row, fg_color="transparent")
+            tier_item.pack(side="left", padx=8)
+
             cb = ctk.CTkCheckBox(
-                auto_sell_row,
-                text=f"Auto-Sell {label}",
+                tier_item,
+                text="",
                 variable=var,
                 command=make_toggle(rarity, var),
-                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                text_color=color,
                 fg_color=color,
                 hover_color=color,
                 border_color=color,
                 checkmark_color="#ffffff",
-                width=120,
-                height=26
+                width=22,
+                height=22,
+                checkbox_width=22,
+                checkbox_height=22
             )
-            cb.pack(side="left", padx=6)
+            cb.pack(side="left", padx=(0, 5))
+
+            ctk.CTkLabel(
+                tier_item,
+                text=f"Auto-Sell {label}",
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                text_color=color
+            ).pack(side="left")
 
         # Lightweight Status Notification / Toast Label
         self.rolling_label = ctk.CTkLabel(
