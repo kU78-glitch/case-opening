@@ -51,7 +51,7 @@ def get_writable_path(relative_path: str) -> str:
     return os.path.join(base_dir, relative_path)
 
 SAVE_FILE = get_writable_path("save.json")
-KEY_PRICE = 0.0  # Removed: pure EV + House Margin pricing model
+KEY_PRICE = 2.49  # Fixed key cost to open any case
 
 # Official CS2 Drop Odds (Weighted Probability)
 RARITY_CHANCES = {

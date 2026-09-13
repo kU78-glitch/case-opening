@@ -65,7 +65,7 @@ class GameManager:
 
     def open_case(self, case_name: str, skip_auto_sell: bool = False, delay_stats: bool = False) -> Optional[Item]:
         """
-        Deducts Case Price (pure EV + House Margin, no key fees), generates item with float, quality,
+        Deducts Total Cost (Case Price + Key $2.49), generates item with float, quality,
         applies case-based price multiplier and individual item market valuation. If delay_stats=True,
         stats and auto-sell are deferred until animation completion via finalize_opened_item.
         """
@@ -73,7 +73,7 @@ class GameManager:
         if not case_data:
             return None
 
-        total_cost = round(float(case_data["price"]), 2)
+        total_cost = round(float(case_data["price"]) + config.KEY_PRICE, 2)
         if self.balance < total_cost:
             return None
 

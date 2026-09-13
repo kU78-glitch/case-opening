@@ -657,17 +657,18 @@ class CasesView(ctk.CTkFrame):
         if hasattr(self, "open_btn"):
             self.open_btn.configure(state="normal")
 
-        case_price = case_data["price"]
-        single_cost = case_price
-        total_cost = single_cost * self.case_count
+        case_price = round(float(case_data["price"]), 2)
+        key_price = config.KEY_PRICE
+        single_cost = round(case_price + key_price, 2)
+        total_cost = round(single_cost * self.case_count, 2)
 
         if self.case_count == 1:
             self.price_label.configure(
-                text=f"Case Price: ${case_price:.2f}"
+                text=f"Case: ${case_price:.2f} + Key: ${key_price:.2f}  |  Total: ${single_cost:.2f}"
             )
         else:
             self.price_label.configure(
-                text=f"Case Price: ${case_price:.2f}  |  Total ({self.case_count}x): ${total_cost:.2f}"
+                text=f"Case: ${case_price:.2f} + Key: ${key_price:.2f} (${single_cost:.2f}/ea)  |  Total ({self.case_count}x): ${total_cost:.2f}"
             )
 
     def _toggle_actions_menu(self):
@@ -884,8 +885,8 @@ class CasesView(ctk.CTkFrame):
         if not case_data:
             return
 
-        single_cost = round(float(case_data["price"]), 2)
-        total_cost = single_cost * self.case_count
+        single_cost = round(float(case_data["price"]) + config.KEY_PRICE, 2)
+        total_cost = round(single_cost * self.case_count, 2)
 
         if self.game.balance < total_cost:
             self.rolling_label.configure(
