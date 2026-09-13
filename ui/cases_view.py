@@ -1329,55 +1329,41 @@ class CasesView(ctk.CTkFrame):
                     card_top = y - card_half_h
                     card_bot = y + card_half_h
 
+                    # All cards: same dark background — gold gets gold border + gold accent bar
+                    accent_color = "#ffd700" if is_gold else rarity_color
                     if is_gold:
                         outline = "#ffe566" if is_center else "#d4af37"
                         bdr_w   = 3 if is_center else 2
-                        # Dark gold fill with inner shimmer
-                        canvas.create_rectangle(x - card_w, card_top, x + card_w, card_bot,
-                                                fill="#2e1c00", outline=outline, width=bdr_w)
-                        canvas.create_rectangle(x - card_w + 3, card_top + 3,
-                                                x + card_w - 3, card_bot - 3,
-                                                fill="#4a2e00", outline="")
-                        # Gold shimmer strip at top
-                        canvas.create_rectangle(x - card_w + 3, card_top + 3,
-                                                x + card_w - 3, card_top + 8,
-                                                fill="#b8860b", outline="")
                     else:
                         outline = "#fbbf24" if is_center else "#1e2433"
                         bdr_w   = 3 if is_center else 1
-                        # Dark card body
-                        canvas.create_rectangle(x - card_w, card_top, x + card_w, card_bot,
-                                                fill="#12151e", outline=outline, width=bdr_w)
-                        # Bottom rarity accent bar (6px tall)
-                        canvas.create_rectangle(x - card_w, card_bot - 6, x + card_w, card_bot,
-                                                fill=rarity_color, outline="")
+
+                    # Dark card body (same for all rarities)
+                    canvas.create_rectangle(x - card_w, card_top, x + card_w, card_bot,
+                                            fill="#12151e", outline=outline, width=bdr_w)
+                    # Bottom rarity accent bar (6px tall) — gold for Rare Special
+                    canvas.create_rectangle(x - card_w, card_bot - 6, x + card_w, card_bot,
+                                            fill=accent_color, outline="")
 
                     # --- Image (fills upper ~75% of card, leaves ~25% for label) ---
-                    # Card inner height = 2*(card_half_h) px.  Image takes (h-8 - label_h) of that.
                     label_h = 18   # pixels reserved for text at the bottom
                     img_h = max(30, card_half_h * 2 - label_h - 4)
                     img_w = max(50, card_w * 2 - 8)
                     img_size = (img_w, img_h)
-
-                    # Image center: (card_top + 4 + img_h/2) → shifted so image + label fit inside card
                     img_cy = card_top + 4 + img_h // 2
 
-                    if is_gold:
-                        photo = image_loader.get_gold_special_tk_photo(size=img_size)
-                        label_text = "* GOLD *"
-                        text_fill  = "#ffd700"
-                    else:
-                        skin_part  = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
-                        st_mark    = "[ST] " if item.get("is_st") else ""
-                        label_text = f"{st_mark}{skin_part[:14]}"
-                        photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=img_size)
-                        text_fill  = "#e8eaf0"
+                    # Load actual skin/knife image for every card (same path for gold and normal)
+                    skin_part  = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
+                    st_mark    = "* " if is_gold else ("[ST] " if item.get("is_st") else "")
+                    label_text = f"{st_mark}{skin_part[:14]}"
+                    text_fill  = "#ffd700" if is_gold else "#e8eaf0"
+                    photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=img_size)
 
                     if photo:
                         self._photo_refs.append(photo)   # keep alive — prevents GC
                         canvas.create_image(x, img_cy, image=photo)
 
-                    # Label at the bottom of card (inside the accent bar area for non-gold)
+                    # Label at bottom of card
                     canvas.create_text(
                         x, card_bot - label_h // 2 - 2,
                         text=label_text, fill=text_fill,
