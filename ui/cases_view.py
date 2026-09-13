@@ -441,27 +441,17 @@ class CasesView(ctk.CTkFrame):
         )
         tier_breakdown_label.pack(fill="x", padx=12, pady=(0, 6), anchor="w")
 
-        # Scrollable Item Selection Container with solid background
-        items_scroll = ctk.CTkScrollableFrame(self.creator_modal, fg_color="#0e1017", corner_radius=8)
-        items_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+        # Static Item Selection Container (No scrollable canvas, completely eliminating ghosting)
+        items_container = ctk.CTkFrame(self.creator_modal, fg_color="#0e1017", corner_radius=8)
+        items_container.pack(fill="both", expand=True, padx=20, pady=(0, 10))
 
-        # Hook canvas scroll & configure events to eliminate ghosting / pixel tearing
-        try:
-            canvas = items_scroll._parent_canvas
-            orig_yview = canvas.yview
-            def smooth_yview(*args):
-                res = orig_yview(*args)
-                canvas.update_idletasks()
-                return res
-            canvas.yview = smooth_yview
+        # Tier Tab Switcher: Mil-Spec, Restricted, Classified, Covert, Rare Special
+        tab_nav_frame = ctk.CTkFrame(items_container, fg_color="#141721", corner_radius=6)
+        tab_nav_frame.pack(fill="x", padx=10, pady=(10, 8))
 
-            def force_canvas_refresh(event=None):
-                canvas.update_idletasks()
-
-            canvas.bind("<Configure>", force_canvas_refresh, add="+")
-            canvas.bind("<MouseWheel>", lambda e: canvas.after_idle(canvas.update_idletasks), add="+")
-        except Exception:
-            pass
+        active_tab_var = ctk.StringVar(value="Mil-Spec")
+        tier_frames = {}
+        tab_buttons = {}
 
         selected_items_by_rarity = {r: set() for r in config.RARITIES}
         current_case_price = [0.0]
@@ -555,6 +545,17 @@ class CasesView(ctk.CTkFrame):
                 text=f"Base EV: ${base_ev:.2f} + {margin_pct}% House Margin = ${final_price:.2f} Final Price"
             )
 
+            # Update tab badge labels with selection counts
+            for r in config.RARITIES:
+                cnt = len(selected_items_by_rarity[r])
+                btn = tab_buttons.get(r)
+                if btn:
+                    short = r.replace("Rare Special", "★ Gold")
+                    if cnt > 0:
+                        btn.configure(text=f"{short} ({cnt})")
+                    else:
+                        btn.configure(text=f"{short} (0)")
+
             # Build readable tier contributions string with dynamically scaled odds percentages
             bd_parts = []
             for r in config.RARITIES:
@@ -592,32 +593,79 @@ class CasesView(ctk.CTkFrame):
                         text_color=TEXT_MUTED
                     )
 
-        # Render sections for each rarity with true individual skin market prices
+        # Tab content container (grid stacking)
+        content_host = ctk.CTkFrame(items_container, fg_color="transparent")
+        content_host.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        content_host.grid_rowconfigure(0, weight=1)
+        content_host.grid_columnconfigure(0, weight=1)
+
+        def switch_tab(target_rarity: str):
+            active_tab_var.set(target_rarity)
+            for r, frame in tier_frames.items():
+                if r == target_rarity:
+                    frame.grid(row=0, column=0, sticky="nsew")
+                else:
+                    frame.grid_remove()
+            for r, btn in tab_buttons.items():
+                if r == target_rarity:
+                    r_color = RARITY_COLORS.get(r, ACCENT_BLUE)
+                    btn.configure(fg_color=r_color, text_color="#ffffff" if r != "Mil-Spec" else "#111827")
+                else:
+                    btn.configure(fg_color="#1a1d27", text_color="#9ca3af")
+
+        # Build each tier tab statically
         for rarity in config.RARITIES:
             r_color = RARITY_COLORS.get(rarity, TEXT_MAIN)
             tier_benchmark = BENCHMARK_TIER_PRICES.get(rarity, 5.0)
 
-            sec_header = ctk.CTkFrame(items_scroll, fg_color="#181b24", corner_radius=6)
-            sec_header.pack(fill="x", padx=6, pady=(8, 4))
+            # Tab button
+            tab_btn = ctk.CTkButton(
+                tab_nav_frame,
+                text=rarity.replace("Rare Special", "★ Gold"),
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                fg_color="#1a1d27",
+                hover_color="#262b3a",
+                height=30,
+                corner_radius=6,
+                command=lambda r=rarity: switch_tab(r)
+            )
+            tab_btn.pack(side="left", padx=4, pady=4, expand=True, fill="x")
+            tab_buttons[rarity] = tab_btn
+
+            # Tab Content Frame
+            tf = ctk.CTkFrame(content_host, fg_color="#12151c", corner_radius=8)
+            tier_frames[rarity] = tf
+
+            # Tier info banner
+            info_bar = ctk.CTkFrame(tf, fg_color="#181c26", corner_radius=6, height=32)
+            info_bar.pack(fill="x", padx=10, pady=(10, 8))
+            info_bar.pack_propagate(False)
+
             ctk.CTkLabel(
-                sec_header,
-                text=f"● {rarity} Pool (Tier Baseline: ${tier_benchmark:.2f})",
-                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+                info_bar,
+                text=f"● {rarity} Drop Pool",
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
                 text_color=r_color
-            ).pack(side="left", padx=10, pady=4)
+            ).pack(side="left", padx=12)
+
+            ctk.CTkLabel(
+                info_bar,
+                text=f"Tier Market Baseline: ${tier_benchmark:.2f}  |  Select skins to include in this tier's drop table",
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                text_color=TEXT_MUTED
+            ).pack(side="right", padx=12)
+
+            # Static Grid of Item Checkboxes (3 columns x 4 rows = 12 items fits without scrolling)
+            grid_frame = ctk.CTkFrame(tf, fg_color="transparent")
+            grid_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+            for c in range(3):
+                grid_frame.grid_columnconfigure(c, weight=1, uniform="tier_col")
 
             pool = known_items.get(rarity, [])
-            items_grid = ctk.CTkFrame(items_scroll, fg_color="#12151c", corner_radius=6)
-            items_grid.pack(fill="x", padx=6, pady=(0, 6))
-
-            # Configure grid columns with equal weight
-            items_grid.grid_columnconfigure(0, weight=1)
-            items_grid.grid_columnconfigure(1, weight=1)
-
-            # Render checkbox with distinct individual market price badges for each skin
-            for idx, (skin_name, color) in enumerate(pool[:12]):
+            for idx, (skin_name, color) in enumerate(pool[:15]):
                 skin_price = get_item_market_price(skin_name, rarity)
-                cb_var = ctk.BooleanVar(value=(idx < 2)) # pre-select 2 items
+                cb_var = ctk.BooleanVar(value=(idx < 2))
                 if cb_var.get():
                     selected_items_by_rarity[rarity].add((skin_name, color))
 
@@ -631,25 +679,26 @@ class CasesView(ctk.CTkFrame):
                     return toggle
 
                 price_tag = f"(${skin_price:.2f})"
-                full_display_text = f"{skin_name}  {price_tag}"
+                full_display_text = f"{skin_name} {price_tag}"
 
-                # Color-code checkbox text based on individual skin market valuation
                 if skin_price >= 200.0:
-                    badge_color = "#f59e0b"  # warm gold
+                    badge_color = "#f59e0b"
                 elif skin_price >= 50.0:
-                    badge_color = "#38bdf8"  # bright cyan
+                    badge_color = "#38bdf8"
                 elif skin_price >= 10.0:
-                    badge_color = "#10b981"  # emerald
+                    badge_color = "#10b981"
                 else:
-                    badge_color = "#d1d5db"  # light muted
+                    badge_color = "#d1d5db"
 
-                # Solid background item cell to prevent transparent text ghosting/tearing
-                item_cell = ctk.CTkFrame(items_grid, fg_color="#151922", corner_radius=4, height=28)
-                item_cell.grid(row=idx // 2, column=idx % 2, sticky="ew", padx=6, pady=3)
-                item_cell.pack_propagate(False)
+                # Solid background cell
+                row = idx // 3
+                col = idx % 3
+                cell = ctk.CTkFrame(grid_frame, fg_color="#181c26", corner_radius=6, height=36)
+                cell.grid(row=row, column=col, sticky="ew", padx=5, pady=4)
+                cell.pack_propagate(False)
 
                 cb = ctk.CTkCheckBox(
-                    item_cell,
+                    cell,
                     text=full_display_text,
                     variable=cb_var,
                     font=ctk.CTkFont(family="Segoe UI", size=11),
@@ -662,6 +711,9 @@ class CasesView(ctk.CTkFrame):
                     command=make_toggle(rarity, skin_name, color, cb_var)
                 )
                 cb.pack(side="left", padx=8, pady=4, fill="x", expand=True)
+
+        # Show initial tab
+        switch_tab("Mil-Spec")
 
         # Initialize dynamic calculation
         update_live_ev()
