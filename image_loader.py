@@ -199,3 +199,71 @@ def get_tk_photo_image(skin_name: str, rarity: str = "Mil-Spec", size: Tuple[int
     _TK_CACHE[cache_key] = photo
     return photo
 
+
+def create_gold_special_card(size: Tuple[int, int] = (44, 32)) -> Image.Image:
+    """
+    Generates a procedural gold ★ icon image for Rare Special roulette cards.
+    No CDN download needed — always instant and correct.
+    """
+    w, h = size
+    img = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Gold gradient-like background using layered rectangles (dark gold → bright gold)
+    layers = [
+        ((0,      0,      w,     h),     (45,  28,   0, 255)),   # darkest border ring
+        ((1,      1,  w - 1, h - 1),     (90,  60,   0, 255)),
+        ((2,      2,  w - 2, h - 2),     (140, 100,  0, 255)),
+        ((3,      3,  w - 3, h - 3),     (184, 134,  11, 255)),  # #b8860b DarkGoldenrod
+        ((4,      4,  w - 4, h - 4),     (212, 175,  55, 255)),  # #d4af37 Goldenrod
+    ]
+    for rect, color in layers:
+        draw.rectangle(rect, fill=color)
+
+    # Bright gold outer glow border
+    draw.rectangle([0, 0, w - 1, h - 1], outline=(255, 215, 0, 255), width=1)
+
+    # Centered ★ star symbol
+    star = "★"
+    star_font_size = max(10, h // 2)
+    try:
+        from PIL import ImageFont
+        font = ImageFont.truetype("segoeui.ttf", star_font_size)
+    except Exception:
+        font = None  # PIL default
+
+    cx, cy = w // 2, h // 2 - 1
+    # Draw shadow
+    shadow_offset = max(1, w // 22)
+    try:
+        draw.text((cx + shadow_offset, cy + shadow_offset), star, fill=(80, 50, 0, 180), font=font, anchor="mm")
+    except Exception:
+        draw.text((cx + shadow_offset - star_font_size // 2, cy + shadow_offset - star_font_size // 2),
+                  star, fill=(80, 50, 0, 180))
+
+    # Draw bright gold star
+    try:
+        draw.text((cx, cy), star, fill=(255, 235, 100, 255), font=font, anchor="mm")
+    except Exception:
+        draw.text((cx - star_font_size // 2, cy - star_font_size // 2), star, fill=(255, 235, 100, 255))
+
+    return img
+
+
+_GOLD_CARD_PHOTO_CACHE: Dict[str, ImageTk.PhotoImage] = {}
+
+
+def get_gold_special_tk_photo(size: Tuple[int, int] = (44, 32)) -> ImageTk.PhotoImage:
+    """
+    Returns a cached ImageTk.PhotoImage of the gold ★ special item card.
+    Always instant — no download, no CDN lookup.
+    """
+    cache_key = f"gold_special_{size[0]}x{size[1]}"
+    if cache_key in _GOLD_CARD_PHOTO_CACHE:
+        return _GOLD_CARD_PHOTO_CACHE[cache_key]
+
+    pil_img = create_gold_special_card(size)
+    photo = ImageTk.PhotoImage(pil_img)
+    _GOLD_CARD_PHOTO_CACHE[cache_key] = photo
+    return photo
+

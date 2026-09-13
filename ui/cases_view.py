@@ -1313,42 +1313,68 @@ class CasesView(ctk.CTkFrame):
                         continue
 
                     y = center_y
-                    bg = RARITY_COLORS.get(item["rarity"], "#444444")
+                    is_gold = item.get("rarity") == "Rare Special"
+                    bg = "#ffd700" if is_gold else RARITY_COLORS.get(item["rarity"], "#444444")
 
                     is_center = abs(x - canvas_center_x) < item_w * 0.5
-                    outline = "#fbbf24" if is_center else "#252833"
-                    width = 3 if is_center else 1
+                    # Gold cards always get a bright gold outline; center items get extra-thick
+                    if is_gold:
+                        outline = "#ffe566" if is_center else "#ffd700"
+                        width = 3 if is_center else 2
+                    else:
+                        outline = "#fbbf24" if is_center else "#252833"
+                        width = 3 if is_center else 1
 
                     card_w = 40
                     card_top = y - card_half_h
                     card_bot = y + card_half_h
 
-                    # Outer rarity card frame with dark background
-                    canvas.create_rectangle(
-                        x - card_w, card_top, x + card_w, card_bot,
-                        fill="#151922", outline=outline if is_center else bg, width=width
-                    )
-                    # Bottom rarity colored accent bar
-                    canvas.create_rectangle(
-                        x - card_w, card_bot - 4, x + card_w, card_bot,
-                        fill=bg, outline=""
-                    )
+                    if is_gold:
+                        # Gold card: rich gold fill with layered inner highlight
+                        canvas.create_rectangle(
+                            x - card_w, card_top, x + card_w, card_bot,
+                            fill="#3d2800", outline=outline, width=width
+                        )
+                        # Inner gold shimmer band
+                        canvas.create_rectangle(
+                            x - card_w + 3, card_top + 3, x + card_w - 3, card_bot - 3,
+                            fill="#5c3d00", outline=""
+                        )
+                        # Top gold highlight strip
+                        canvas.create_rectangle(
+                            x - card_w + 3, card_top + 3, x + card_w - 3, card_top + 7,
+                            fill="#b8860b", outline=""
+                        )
+                    else:
+                        # Normal card: dark background
+                        canvas.create_rectangle(
+                            x - card_w, card_top, x + card_w, card_bot,
+                            fill="#151922", outline=outline if is_center else bg, width=width
+                        )
+                        # Bottom rarity colored accent bar
+                        canvas.create_rectangle(
+                            x - card_w, card_bot - 4, x + card_w, card_bot,
+                            fill=bg, outline=""
+                        )
 
-                    # Obfuscate Gold (Rare Special) names on the track
-                    if item.get("rarity") == "Rare Special":
+                    # Image rendering
+                    if is_gold:
+                        # Always use the procedural gold ★ icon — instant, no CDN
+                        photo = image_loader.get_gold_special_tk_photo(size=(44, 32))
                         display = "★ GOLD ★"
-                        photo = image_loader.get_tk_photo_image("★ Karambit | Doppler", rarity="Rare Special", size=(44, 32))
+                        text_fill = "#ffd700"
                     else:
                         st_pref = "★ " if item.get("is_st") else ""
                         short_name = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
                         display = f"{st_pref}{short_name[:12]}"
                         photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=(44, 32))
+                        text_fill = "#ffffff"
 
                     if photo:
                         canvas.create_image(x, y - 6, image=photo)
 
                     canvas.create_text(
-                        x, y + 18, text=display, fill="#ffffff",
+                        x, y + 18, text=display, fill=text_fill,
                         font=("Segoe UI", 8, "bold"), width=76
                     )
 
@@ -1466,8 +1492,8 @@ class CasesView(ctk.CTkFrame):
             self._inline_bonus_outcomes[row_idx] = is_upgrade
 
             bonus_tile_types = [
-                {"type": "UPGRADE", "title": upgraded_name, "color": "#10b981", "bg": "#064e3b"},
-                {"type": "BASE", "title": gold_item.name, "color": "#f59e0b", "bg": "#451a03"}
+                {"type": "UPGRADE", "title": f"★ UPGRADE: {upgraded_name}", "color": "#10ffaa", "bg": "#003320"},
+                {"type": "BASE",    "title": f"★ BASE: {gold_item.name}",   "color": "#ffd700", "bg": "#3d2800"}
             ]
 
             seq = []
