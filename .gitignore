@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 save.json
 savegame.json
+save.dat
+*.dat
+*.tmp
+debug_*.json
 build/
 dist/
 *.spec

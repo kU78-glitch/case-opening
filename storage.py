@@ -3,6 +3,7 @@ import os
 import config
 from typing import TYPE_CHECKING
 from models import Item, GameStats
+from security import save_encrypted_file, load_encrypted_file
 
 if TYPE_CHECKING:
     from game_logic import GameManager
@@ -28,23 +29,37 @@ class StorageManager:
                 "drops_by_rarity": game.stats.drops_by_rarity
             }
         }
-        try:
-            tmp_filename = f"{filename}.tmp"
-            with open(tmp_filename, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-            os.replace(tmp_filename, filename)
-        except Exception as e:
-            print(f"Warning: Failed to save game state to '{filename}': {e}")
+        success = save_encrypted_file(filename, data)
+        if not success:
+            print(f"Warning: Failed to save game state to '{filename}'")
 
     @staticmethod
     def load_game(game: "GameManager", filename: str = config.SAVE_FILE) -> bool:
-        if not os.path.exists(filename):
+        data = None
+        is_tampered = False
+
+        # 1. Attempt loading encrypted binary save (.dat)
+        if os.path.exists(filename):
+            data, is_tampered = load_encrypted_file(filename)
+            if is_tampered:
+                print(f"[SECURITY ALERT] Save file '{filename}' failed tamper/HMAC verification! Resetting to safe defaults.")
+                return False
+
+        # 2. Backward compatibility: if .dat doesn't exist, check legacy save.json
+        if data is None and hasattr(config, "LEGACY_SAVE_FILE") and os.path.exists(config.LEGACY_SAVE_FILE):
+            try:
+                with open(config.LEGACY_SAVE_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                print(f"[*] Migrating legacy save file '{config.LEGACY_SAVE_FILE}' to encrypted format '{filename}'")
+                # Immediately encrypt and save to new format
+                save_encrypted_file(filename, data)
+            except Exception as e:
+                print(f"Warning: Could not read legacy save file: {e}")
+
+        if data is None:
             return False
 
         try:
-            with open(filename, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
             game.balance = round(float(data.get("balance", 500.0)), 2)
             game.prestige_level = int(data.get("prestige_level", 0))
             game.prestige_threshold = float(data.get("prestige_threshold", 10000.0))
@@ -76,5 +91,5 @@ class StorageManager:
             )
             return True
         except Exception as e:
-            print(f"Error loading save file: {e}")
+            print(f"Error parsing save file: {e}")
             return False

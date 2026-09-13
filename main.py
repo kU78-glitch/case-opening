@@ -3,7 +3,7 @@ import subprocess
 import multiprocessing
 
 def auto_install_dependencies():
-    required_packages = ["customtkinter", "pygame"]
+    required_packages = ["customtkinter", "pygame", "cryptography"]
     for package in required_packages:
         try:
             __import__(package)

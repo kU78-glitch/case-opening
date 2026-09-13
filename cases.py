@@ -439,26 +439,56 @@ CASES = {
 
 import os
 import json
+from security import save_encrypted_file, load_encrypted_file
 
-CUSTOM_CASES_FILE = config.get_writable_path("custom_cases.json")
+CUSTOM_CASES_FILE = config.CUSTOM_CASES_FILE
 CUSTOM_CASES = {}
 
 def load_custom_cases() -> dict:
-    """Loads user-created custom cases from custom_cases.json in the writable app directory."""
+    """Loads user-created custom cases from secure custom_cases.dat in the writable app directory."""
     global CUSTOM_CASES
-    if not os.path.exists(CUSTOM_CASES_FILE):
-        # 1. First attempt to load bundled template if packaged with PyInstaller
-        bundled_file = config.get_resource_path("custom_cases.json")
+    data = None
+    is_tampered = False
+
+    # 1. Attempt loading encrypted custom_cases.dat
+    if os.path.exists(CUSTOM_CASES_FILE):
+        data, is_tampered = load_encrypted_file(CUSTOM_CASES_FILE)
+        if is_tampered:
+            print(f"[SECURITY ALERT] Custom cases file '{CUSTOM_CASES_FILE}' failed HMAC verification! Resetting to safe defaults.")
+            data = {}
+
+    # 2. Backward compatibility: if .dat doesn't exist, check legacy custom_cases.json
+    if data is None:
+        legacy_file = getattr(config, "LEGACY_CUSTOM_CASES_FILE", None)
+        if legacy_file and os.path.exists(legacy_file):
+            try:
+                with open(legacy_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                print(f"[*] Migrated legacy custom cases from '{legacy_file}' to encrypted format '{CUSTOM_CASES_FILE}'")
+                save_custom_cases(data)
+            except Exception as e:
+                print(f"Warning: Could not load legacy custom cases: {e}")
+
+    # 3. Check bundled resource template (e.g. Inside PyInstaller binary)
+    if data is None:
+        bundled_file = config.get_resource_path("custom_cases.dat")
+        if not os.path.exists(bundled_file):
+            bundled_file = config.get_resource_path("custom_cases.json")
+
         if os.path.exists(bundled_file) and os.path.abspath(bundled_file) != os.path.abspath(CUSTOM_CASES_FILE):
             try:
-                with open(bundled_file, "r", encoding="utf-8") as bf:
-                    data = json.load(bf)
-                save_custom_cases(data)
-                return CUSTOM_CASES
+                b_data, _ = load_encrypted_file(bundled_file)
+                if b_data is None:
+                    with open(bundled_file, "r", encoding="utf-8") as bf:
+                        b_data = json.load(bf)
+                if b_data:
+                    save_custom_cases(b_data)
+                    return CUSTOM_CASES
             except Exception as e:
                 print(f"Warning: Could not copy bundled custom cases: {e}")
 
-        # 2. Fallback: Create initial sample custom case so users see an example
+    # 4. Fallback: Create initial sample custom case so users see an example
+    if data is None:
         sample_cases = {
             "Community Legends Case": {
                 "price": 2.50,
@@ -489,27 +519,18 @@ def load_custom_cases() -> dict:
             }
         }
         save_custom_cases(sample_cases)
+        return CUSTOM_CASES
 
-    try:
-        with open(CUSTOM_CASES_FILE, "r", encoding="utf-8") as f:
-            CUSTOM_CASES = json.load(f)
-    except Exception as e:
-        print(f"Warning: Could not load custom cases from '{CUSTOM_CASES_FILE}': {e}")
-        CUSTOM_CASES = {}
-
+    CUSTOM_CASES = data if isinstance(data, dict) else {}
     return CUSTOM_CASES
 
 def save_custom_cases(cases_dict: dict):
-    """Saves custom cases dictionary to custom_cases.json atomically."""
+    """Saves custom cases dictionary to encrypted custom_cases.dat atomically."""
     global CUSTOM_CASES
     CUSTOM_CASES = cases_dict
-    try:
-        tmp_file = f"{CUSTOM_CASES_FILE}.tmp"
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(CUSTOM_CASES, f, indent=4, ensure_ascii=False)
-        os.replace(tmp_file, CUSTOM_CASES_FILE)
-    except Exception as e:
-        print(f"Warning: Could not save custom cases: {e}")
+    success = save_encrypted_file(CUSTOM_CASES_FILE, CUSTOM_CASES)
+    if not success:
+        print(f"Warning: Failed to save custom cases to '{CUSTOM_CASES_FILE}'")
 
 # Initialize custom cases
 load_custom_cases()

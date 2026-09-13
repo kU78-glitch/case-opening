@@ -78,9 +78,14 @@ def build_executable():
         exe_path = os.path.join(dist_folder, "Case_Opening_Simulator.exe")
         zip_path = os.path.join(dist_dir, "Case_Opening_Simulator.zip")
 
-        # Ensure custom_cases.json is present in the distribution root
+        # Ensure custom_cases.dat or template is present in distribution root
+        custom_cases_dat = os.path.join(base_dir, "custom_cases.dat")
+        root_custom_cases_dat = os.path.join(dist_folder, "custom_cases.dat")
+        if os.path.exists(custom_cases_dat) and not os.path.exists(root_custom_cases_dat):
+            shutil.copy2(custom_cases_dat, root_custom_cases_dat)
+
         root_custom_cases = os.path.join(dist_folder, "custom_cases.json")
-        if not os.path.exists(root_custom_cases):
+        if not os.path.exists(root_custom_cases) and os.path.exists(custom_cases_file):
             shutil.copy2(custom_cases_file, root_custom_cases)
 
         print("\n" + "=" * 65)
