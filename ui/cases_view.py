@@ -19,11 +19,12 @@ from ui.theme import (
 
 class CasesView(ctk.CTkFrame):
     # --- Animation constants ---
-    ITEM_WIDTH = 85           # pixel width per item card
-    VISIBLE_RADIUS = 4        # items visible each side of center
+    ITEM_WIDTH = 110          # pixel width per item card (CS2-style compact square)
+    VISIBLE_RADIUS = 3        # items visible each side of center (3 fits in 680px at 110px each)
     SPIN_ITEM_COUNT = 55      # total fake items in the strip
     ANIM_FPS = 60             # target frames per second
     FRAME_MS = 16             # ms per frame (~60 FPS)
+
 
     def __init__(self, master, game, sound_manager, on_state_changed, on_open_inventory=None):
         super().__init__(master, fg_color=PANEL_BG, corner_radius=12)
@@ -54,6 +55,7 @@ class CasesView(ctk.CTkFrame):
         self._last_tick_item: int = -1   # last item index that crossed center (for tick sync)
         self._anim_target_item: int = 0  # the item index the spin must land on
         self._toast_timer = None
+        self._photo_refs: list = []   # prevents GC from dropping canvas PhotoImage objects between frames
 
         self._build_ui()
         self._setup_spinner_rows(1)
@@ -463,15 +465,15 @@ class CasesView(ctk.CTkFrame):
 
         self.spin_canvases.clear()
 
-        # Canvas heights based on count
+        # Canvas heights based on count — match ITEM_WIDTH for square CS2-style cards
         if count == 1:
-            row_height = 86
+            row_height = 110
             pady = 2
         elif count == 2:
-            row_height = 76
+            row_height = 100
             pady = 2
         else:
-            row_height = 68
+            row_height = 90
             pady = 2
 
         for row_idx in range(count):
@@ -1292,6 +1294,9 @@ class CasesView(ctk.CTkFrame):
         item_w = self.ITEM_WIDTH
         vis_r = self.VISIBLE_RADIUS
 
+        # Reset per-frame photo refs to prevent GC from dropping canvas images
+        self._photo_refs = []
+
         for row_idx, canvas in enumerate(self.spin_canvases):
             if row_idx >= len(self.spin_sequences):
                 continue
@@ -1300,7 +1305,8 @@ class CasesView(ctk.CTkFrame):
             canvas.delete("all")
             h = int(canvas.cget("height"))
             center_y = h // 2
-            card_half_h = min(26, h // 2 - 4)
+            # Square card: use (h//2 - 4) so card height = h - 8 (fills canvas)
+            card_half_h = h // 2 - 4
 
             # Draw items from (center - radius - 1) to (center + radius + 1) for smooth edges
             for offset in range(-vis_r - 1, vis_r + 2):
@@ -1314,77 +1320,74 @@ class CasesView(ctk.CTkFrame):
 
                     y = center_y
                     is_gold = item.get("rarity") == "Rare Special"
-                    bg = "#ffd700" if is_gold else RARITY_COLORS.get(item["rarity"], "#444444")
+                    rarity_color = RARITY_COLORS.get(item["rarity"], "#444444")
 
                     is_center = abs(x - canvas_center_x) < item_w * 0.5
-                    # Gold cards always get a bright gold outline; center items get extra-thick
-                    if is_gold:
-                        outline = "#ffe566" if is_center else "#ffd700"
-                        width = 3 if is_center else 2
-                    else:
-                        outline = "#fbbf24" if is_center else "#252833"
-                        width = 3 if is_center else 1
 
-                    card_w = 40
+                    # Card half-width: leave 3px gap between cards (item_w=110, card 104px wide)
+                    card_w = item_w // 2 - 3
                     card_top = y - card_half_h
                     card_bot = y + card_half_h
 
                     if is_gold:
-                        # Gold card: rich gold fill with layered inner highlight
-                        canvas.create_rectangle(
-                            x - card_w, card_top, x + card_w, card_bot,
-                            fill="#3d2800", outline=outline, width=width
-                        )
-                        # Inner gold shimmer band
-                        canvas.create_rectangle(
-                            x - card_w + 3, card_top + 3, x + card_w - 3, card_bot - 3,
-                            fill="#5c3d00", outline=""
-                        )
-                        # Top gold highlight strip
-                        canvas.create_rectangle(
-                            x - card_w + 3, card_top + 3, x + card_w - 3, card_top + 7,
-                            fill="#b8860b", outline=""
-                        )
+                        outline = "#ffe566" if is_center else "#d4af37"
+                        bdr_w   = 3 if is_center else 2
+                        # Dark gold fill with inner shimmer
+                        canvas.create_rectangle(x - card_w, card_top, x + card_w, card_bot,
+                                                fill="#2e1c00", outline=outline, width=bdr_w)
+                        canvas.create_rectangle(x - card_w + 3, card_top + 3,
+                                                x + card_w - 3, card_bot - 3,
+                                                fill="#4a2e00", outline="")
+                        # Gold shimmer strip at top
+                        canvas.create_rectangle(x - card_w + 3, card_top + 3,
+                                                x + card_w - 3, card_top + 8,
+                                                fill="#b8860b", outline="")
                     else:
-                        # Normal card: dark background
-                        canvas.create_rectangle(
-                            x - card_w, card_top, x + card_w, card_bot,
-                            fill="#151922", outline=outline if is_center else bg, width=width
-                        )
-                        # Bottom rarity colored accent bar
-                        canvas.create_rectangle(
-                            x - card_w, card_bot - 4, x + card_w, card_bot,
-                            fill=bg, outline=""
-                        )
+                        outline = "#fbbf24" if is_center else "#1e2433"
+                        bdr_w   = 3 if is_center else 1
+                        # Dark card body
+                        canvas.create_rectangle(x - card_w, card_top, x + card_w, card_bot,
+                                                fill="#12151e", outline=outline, width=bdr_w)
+                        # Bottom rarity accent bar (6px tall)
+                        canvas.create_rectangle(x - card_w, card_bot - 6, x + card_w, card_bot,
+                                                fill=rarity_color, outline="")
 
-                    # Image rendering — fill most of the card (card = 80×52px)
-                    # Image: 72×36, centered at y-8 → spans y-26..y+10, leaving y+10..y+26 for text
-                    img_size = (72, 36)
-                    img_y = y - 8  # shift image up to make room for label
+                    # --- Image (fills upper ~75% of card, leaves ~25% for label) ---
+                    # Card inner height = 2*(card_half_h) px.  Image takes (h-8 - label_h) of that.
+                    label_h = 18   # pixels reserved for text at the bottom
+                    img_h = max(30, card_half_h * 2 - label_h - 4)
+                    img_w = max(50, card_w * 2 - 8)
+                    img_size = (img_w, img_h)
+
+                    # Image center: (card_top + 4 + img_h/2) → shifted so image + label fit inside card
+                    img_cy = card_top + 4 + img_h // 2
 
                     if is_gold:
                         photo = image_loader.get_gold_special_tk_photo(size=img_size)
-                        display = "★ GOLD"
-                        text_fill = "#ffd700"
+                        label_text = "* GOLD *"
+                        text_fill  = "#ffd700"
                     else:
-                        st_pref = "★ " if item.get("is_st") else ""
-                        skin_part = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
-                        display = f"{st_pref}{skin_part[:11]}"
+                        skin_part  = item['name'].split("|")[-1].strip() if "|" in item['name'] else item['name']
+                        st_mark    = "[ST] " if item.get("is_st") else ""
+                        label_text = f"{st_mark}{skin_part[:14]}"
                         photo = image_loader.get_tk_photo_image(item['name'], rarity=item['rarity'], size=img_size)
-                        text_fill = "#ffffff"
+                        text_fill  = "#e8eaf0"
 
                     if photo:
-                        canvas.create_image(x, img_y, image=photo)
+                        self._photo_refs.append(photo)   # keep alive — prevents GC
+                        canvas.create_image(x, img_cy, image=photo)
 
-                    # Label sits in the lower portion of the card (y+10 to y+26)
+                    # Label at the bottom of card (inside the accent bar area for non-gold)
                     canvas.create_text(
-                        x, y + 19,
-                        text=display, fill=text_fill,
-                        font=("Segoe UI", 7, "bold"), width=74
+                        x, card_bot - label_h // 2 - 2,
+                        text=label_text, fill=text_fill,
+                        font=("Segoe UI", 8, "bold"), width=card_w * 2 - 6
                     )
 
             # Center indicator line (golden ticker)
             canvas.create_line(canvas_center_x, 0, canvas_center_x, h, fill="#fbbf24", width=2)
+
+
 
     def _spin_step(self):
         now = time.monotonic()
@@ -1558,23 +1561,27 @@ class CasesView(ctk.CTkFrame):
                     fill=tile["bg"], outline=outline, width=width
                 )
 
-                # Render skin image inside the re-spin tile (64×36 fits inside 196×52 tile)
-                tile_img_size = (64, 34)
+                # Image: 80×(card_height-22) to leave room for text label
+                tile_img_h = max(32, card_half_h * 2 - 22)
+                tile_img_size = (80, tile_img_h)
                 tile_name = tile.get("name", "")
+                img_cy = y - card_half_h + 4 + tile_img_h // 2   # top-aligned inside card
+
                 if tile["type"] == "UPGRADE" and tile_name:
                     tile_photo = image_loader.get_tk_photo_image(tile_name, rarity="Rare Special", size=tile_img_size)
                 else:
                     tile_photo = image_loader.get_gold_special_tk_photo(size=tile_img_size)
 
                 if tile_photo:
-                    canvas.create_image(x, y - 8, image=tile_photo)
+                    self._photo_refs.append(tile_photo)   # GC-safe
+                    canvas.create_image(x, img_cy, image=tile_photo)
 
                 # Label below image
                 canvas.create_text(
-                    x, y + 17,
+                    x, y + card_half_h - 10,
                     text=tile["title"],
                     fill=tile["color"],
-                    font=("Segoe UI", 8, "bold"),
+                    font=("Segoe UI", 9, "bold"),
                     width=188
                 )
 
