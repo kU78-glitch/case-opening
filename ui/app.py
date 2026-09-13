@@ -48,11 +48,13 @@ class App(ctk.CTk):
         self.sidebar = Sidebar(body, on_navigate=self.show_view)
         self.sidebar.pack(side="left", fill="y", padx=(0, 12))
 
-        # Content Frame
+        # Content Frame — uses grid stacking so all views occupy the same cell
         self.content_frame = ctk.CTkFrame(body, fg_color="transparent")
         self.content_frame.pack(side="right", fill="both", expand=True)
+        self.content_frame.grid_rowconfigure(0, weight=1)
+        self.content_frame.grid_columnconfigure(0, weight=1)
 
-        # 3. Instantiate Views
+        # 3. Instantiate all views once and stack them in the same grid cell
         self.views = {
             "cases": CasesView(
                 self.content_frame,
@@ -81,6 +83,10 @@ class App(ctk.CTk):
             )
         }
 
+        # Place all views in the same grid cell (stacked)
+        for view in self.views.values():
+            view.grid(row=0, column=0, sticky="nsew")
+
         self.current_view_key = None
         self.show_view("cases")
 
@@ -92,16 +98,10 @@ class App(ctk.CTk):
         if key not in self.views:
             return
 
-        # Hide old view
-        if self.current_view_key and self.current_view_key in self.views:
-            self.views[self.current_view_key].pack_forget()
-
-        # Show new view
         view = self.views[key]
-        view.pack(fill="both", expand=True)
         self.current_view_key = key
 
-        # View specific refresh hooks
+        # Refresh data in the target view BEFORE raising it to avoid visible flicker
         if key == "cases":
             view.refresh_controls()
         elif key == "inventory":
@@ -110,6 +110,10 @@ class App(ctk.CTk):
             view.refresh_candidates()
         elif key == "stats":
             view.refresh()
+
+        # Flush pending layout calculations, then raise the view to front
+        self.update_idletasks()
+        view.tkraise()
 
     def on_state_changed(self, check_achievements: bool = True):
         # Refresh header balances

@@ -1,7 +1,48 @@
 # CONFIG & CONSTANTS
+import sys
+import os
 
-SAVE_FILE = "save.json"
-KEY_PRICE = 2.49  # Real CS2 key cost
+def get_resource_path(relative_path: str) -> str:
+    """
+    Get absolute path to resource, works for dev and for PyInstaller _MEIPASS.
+    Used for read-only bundled assets (audio, images, default templates).
+    """
+    if hasattr(sys, '_MEIPASS'):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+
+    # Direct target path
+    target = os.path.join(base_path, relative_path)
+    if os.path.exists(target):
+        return target
+
+    # Check inside 'assets' directory if relative_path was requested
+    assets_target = os.path.join(base_path, "assets", relative_path)
+    if os.path.exists(assets_target):
+        return assets_target
+
+    # Fallback to project root directory
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    root_target = os.path.join(root_dir, relative_path)
+    if os.path.exists(root_target):
+        return root_target
+
+    return target
+
+def get_writable_path(relative_path: str) -> str:
+    """
+    Get writable path for user data files (save.json, custom_cases.json).
+    When running as frozen .exe, writes to the directory containing the executable.
+    """
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.abspath(".")
+    return os.path.join(base_dir, relative_path)
+
+SAVE_FILE = get_writable_path("save.json")
+KEY_PRICE = 0.0  # Removed: pure EV + House Margin pricing model
 
 # Official CS2 Drop Odds (Weighted Probability)
 RARITY_CHANCES = {

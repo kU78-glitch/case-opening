@@ -1,6 +1,6 @@
 import sys
 import subprocess
-
+import multiprocessing
 
 def auto_install_dependencies():
     required_packages = ["customtkinter", "pygame"]
@@ -11,11 +11,13 @@ def auto_install_dependencies():
             print(f"Package '{package}' missing. Installing automatically...")
             subprocess.check_call([sys.executable, "-m", "pip", "install", package])
 
-
-auto_install_dependencies()
+# Only attempt pip dependency install in dev mode (never inside PyInstaller binary)
+if not getattr(sys, "frozen", False):
+    auto_install_dependencies()
 
 from ui.app import App
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     app = App()
     app.mainloop()

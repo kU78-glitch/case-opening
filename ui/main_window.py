@@ -841,9 +841,9 @@ class CaseGame:
         case_name = self.selected_case.get()
         case_data = CASES[case_name]
         case_price = case_data["price"]
-        total_cost = case_price + KEY_PRICE
+        total_cost = case_price
         self.case_price_label.config(
-            text=f"Case Price: ${case_price:.2f}  |  Key: ${KEY_PRICE:.2f}  |  Total: ${total_cost:.2f}"
+            text=f"Case Price: ${case_price:.2f}"
         )
 
     def update_balance(self):
@@ -885,7 +885,7 @@ class CaseGame:
         case_name = self.selected_case.get()
         case_data = CASES[case_name]
         case_price = case_data["price"]
-        total_cost = case_price + KEY_PRICE
+        total_cost = case_price
 
         if self.balance < total_cost:
             self.set_label("Not enough money!", "red")

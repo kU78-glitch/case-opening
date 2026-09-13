@@ -114,6 +114,11 @@ class TradeUpView(ctk.CTkFrame):
         self._update_counter()
 
     def _render_rows(self):
+        # Cancel any pending async chunk renders
+        if hasattr(self, '_render_job') and self._render_job is not None:
+            self.after_cancel(self._render_job)
+            self._render_job = None
+
         for child in self.scroll_frame.winfo_children():
             child.destroy()
 
@@ -128,8 +133,25 @@ class TradeUpView(ctk.CTkFrame):
             empty.pack(pady=40)
             return
 
-        for orig_idx, item in self.candidate_items:
+        # Chunked async rendering
+        first_batch = 15
+        chunk_size = 10
+        for orig_idx, item in self.candidate_items[:first_batch]:
             self._create_candidate_row(orig_idx, item)
+
+        remaining = self.candidate_items[first_batch:]
+        if remaining:
+            self._render_remaining_chunks(remaining, chunk_size)
+
+    def _render_remaining_chunks(self, remaining, chunk_size):
+        """Render remaining candidate rows in small async chunks."""
+        if not remaining:
+            self._render_job = None
+            return
+        batch = remaining[:chunk_size]
+        for orig_idx, item in batch:
+            self._create_candidate_row(orig_idx, item)
+        self._render_job = self.after(1, lambda: self._render_remaining_chunks(remaining[chunk_size:], chunk_size))
 
     def _create_candidate_row(self, orig_idx: int, item):
         val = self.game.get_item_value(item)

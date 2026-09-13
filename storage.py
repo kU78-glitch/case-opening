@@ -28,8 +28,13 @@ class StorageManager:
                 "drops_by_rarity": game.stats.drops_by_rarity
             }
         }
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        try:
+            tmp_filename = f"{filename}.tmp"
+            with open(tmp_filename, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            os.replace(tmp_filename, filename)
+        except Exception as e:
+            print(f"Warning: Failed to save game state to '{filename}': {e}")
 
     @staticmethod
     def load_game(game: "GameManager", filename: str = config.SAVE_FILE) -> bool:

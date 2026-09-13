@@ -1,0 +1,62 @@
+{
+    "Community Legends Case": {
+        "price": 2.5,
+        "multiplier": 1.5,
+        "items": {
+            "Mil-Spec": [
+                [
+                    "Glock-18 | High Beam",
+                    "blue"
+                ],
+                [
+                    "USP-S | Lead Conduit",
+                    "blue"
+                ],
+                [
+                    "M4A4 | Magnesium",
+                    "blue"
+                ]
+            ],
+            "Restricted": [
+                [
+                    "AWP | Atheris",
+                    "purple"
+                ],
+                [
+                    "AK-47 | Uncharted",
+                    "purple"
+                ]
+            ],
+            "Classified": [
+                [
+                    "M4A1-S | Hyper Beast",
+                    "pink"
+                ],
+                [
+                    "Desert Eagle | Mecha Industries",
+                    "pink"
+                ]
+            ],
+            "Covert": [
+                [
+                    "AK-47 | Bloodsport",
+                    "red"
+                ],
+                [
+                    "AWP | Asiimov",
+                    "red"
+                ]
+            ],
+            "Rare Special": [
+                [
+                    "★ Karambit | Doppler",
+                    "gold"
+                ],
+                [
+                    "★ Butterfly Knife | Fade",
+                    "gold"
+                ]
+            ]
+        }
+    }
+}

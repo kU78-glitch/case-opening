@@ -7,7 +7,7 @@ def roll_float() -> float:
     """Generates a random float value bounded between 0.0000 and 1.0000."""
     return round(random.uniform(0.0000, 1.0000), 4)
 
-def float_to_quality(wear_float: float) -> str:
+def float_to_quality(wear_float: Optional[float]) -> str:
     """
     Wear Conversion:
     0.0000 - 0.0699: Factory New (FN)
@@ -16,13 +16,18 @@ def float_to_quality(wear_float: float) -> str:
     0.3800 - 0.4499: Well-Worn (WW)
     0.4500 - 1.0000: Battle-Scarred (BS)
     """
-    if wear_float < 0.0700:
+    try:
+        val = float(wear_float) if wear_float is not None else roll_float()
+    except (TypeError, ValueError):
+        val = roll_float()
+
+    if val < 0.0700:
         return "Factory New"
-    elif wear_float < 0.1500:
+    elif val < 0.1500:
         return "Minimal Wear"
-    elif wear_float < 0.3800:
+    elif val < 0.3800:
         return "Field-Tested"
-    elif wear_float < 0.4500:
+    elif val < 0.4500:
         return "Well-Worn"
     else:
         return "Battle-Scarred"
@@ -38,6 +43,17 @@ class Item:
     case_name: str
     base_price: float = 5.0
 
+    @property
+    def price(self) -> float:
+        """Returns the market base price of the item."""
+        return self.base_price
+
+    def get(self, key: str, default=None):
+        """Allows dictionary-style access for item properties (e.g. item.get('price'))."""
+        if key in ("price", "base_price"):
+            return self.base_price
+        return getattr(self, key, default)
+
     def get_value(self, prestige_level: int = 0, perk_bonus: float = 0.0) -> float:
         """
         Dynamic Price Calculation:
@@ -47,15 +63,16 @@ class Item:
         Prestige Bonus: +10% per prestige level + permanent perk bonus.
         """
         # Float multiplier
-        if self.wear_float < 0.0200:
+        wear = self.wear_float if self.wear_float is not None else 0.5
+        if wear < 0.0200:
             float_mult = 1.8
-        elif self.wear_float < 0.0700:
+        elif wear < 0.0700:
             float_mult = 1.5
-        elif self.wear_float < 0.1500:
+        elif wear < 0.1500:
             float_mult = 1.1
-        elif self.wear_float < 0.3800:
+        elif wear < 0.3800:
             float_mult = 0.8
-        elif self.wear_float < 0.4500:
+        elif wear < 0.4500:
             float_mult = 0.65
         else:
             float_mult = 0.5
@@ -63,7 +80,8 @@ class Item:
         st_mult = 2.5 if self.is_st else 1.0
         prestige_mult = 1.0 + (prestige_level * 0.10) + perk_bonus
 
-        final_price = self.base_price * float_mult * st_mult * prestige_mult
+        base = self.base_price if self.base_price is not None else 5.0
+        final_price = base * float_mult * st_mult * prestige_mult
         return round(final_price, 2)
 
     def to_dict(self) -> dict:
@@ -80,26 +98,40 @@ class Item:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'Item':
-        wear_float = data.get("wear_float")
-        if wear_float is None:
+        raw_float = data.get("wear_float") if isinstance(data, dict) else None
+        if raw_float is None and isinstance(data, dict):
+            raw_float = data.get("float_value")
+
+        try:
+            wear_float = float(raw_float) if raw_float is not None else roll_float()
+        except (TypeError, ValueError):
             wear_float = roll_float()
 
-        quality = data.get("quality")
+        wear_float = round(wear_float, 4)
+
+        quality = data.get("quality") if isinstance(data, dict) else None
         if not quality:
             quality = float_to_quality(wear_float)
 
-        rarity = data.get("rarity", "Mil-Spec")
-        base_price = data.get("base_price", config.SELL_PRICES.get(rarity, 5.0))
+        rarity = data.get("rarity") if isinstance(data, dict) else None
+        if not rarity:
+            rarity = "Mil-Spec"
+
+        raw_price = data.get("base_price") if isinstance(data, dict) else None
+        try:
+            base_price = float(raw_price) if raw_price is not None else config.SELL_PRICES.get(rarity, 5.0)
+        except (TypeError, ValueError):
+            base_price = config.SELL_PRICES.get(rarity, 5.0)
 
         return cls(
-            name=data.get("name", "Unknown"),
+            name=data.get("name", "Unknown") if isinstance(data, dict) else "Unknown",
             rarity=rarity,
-            color=data.get("color", "white"),
-            is_st=bool(data.get("is_st", False)),
-            wear_float=float(wear_float),
+            color=data.get("color", "white") if isinstance(data, dict) else "white",
+            is_st=bool(data.get("is_st", False)) if isinstance(data, dict) else False,
+            wear_float=wear_float,
             quality=quality,
-            case_name=data.get("case_name", ""),
-            base_price=float(base_price)
+            case_name=data.get("case_name", "") if isinstance(data, dict) else "",
+            base_price=round(base_price, 2)
         )
 
 @dataclass

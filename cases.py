@@ -1,3 +1,11 @@
+import config
+from item_prices import (
+    get_item_market_price,
+    calculate_scaled_tier_odds,
+    BENCHMARK_TIER_PRICES,
+    ITEM_MARKET_PRICES
+)
+
 CASES = {
 
     # ---------------------------
@@ -428,3 +436,151 @@ CASES = {
         }
     }
 }
+
+import os
+import json
+
+CUSTOM_CASES_FILE = config.get_writable_path("custom_cases.json")
+CUSTOM_CASES = {}
+
+def load_custom_cases() -> dict:
+    """Loads user-created custom cases from custom_cases.json in the writable app directory."""
+    global CUSTOM_CASES
+    if not os.path.exists(CUSTOM_CASES_FILE):
+        # 1. First attempt to load bundled template if packaged with PyInstaller
+        bundled_file = config.get_resource_path("custom_cases.json")
+        if os.path.exists(bundled_file) and os.path.abspath(bundled_file) != os.path.abspath(CUSTOM_CASES_FILE):
+            try:
+                with open(bundled_file, "r", encoding="utf-8") as bf:
+                    data = json.load(bf)
+                save_custom_cases(data)
+                return CUSTOM_CASES
+            except Exception as e:
+                print(f"Warning: Could not copy bundled custom cases: {e}")
+
+        # 2. Fallback: Create initial sample custom case so users see an example
+        sample_cases = {
+            "Community Legends Case": {
+                "price": 2.50,
+                "multiplier": 1.5,
+                "items": {
+                    "Mil-Spec": [
+                        ("Glock-18 | High Beam", "blue"),
+                        ("USP-S | Lead Conduit", "blue"),
+                        ("M4A4 | Magnesium", "blue")
+                    ],
+                    "Restricted": [
+                        ("AWP | Atheris", "purple"),
+                        ("AK-47 | Uncharted", "purple")
+                    ],
+                    "Classified": [
+                        ("M4A1-S | Hyper Beast", "pink"),
+                        ("Desert Eagle | Mecha Industries", "pink")
+                    ],
+                    "Covert": [
+                        ("AK-47 | Bloodsport", "red"),
+                        ("AWP | Asiimov", "red")
+                    ],
+                    "Rare Special": [
+                        ("★ Karambit | Doppler", "gold"),
+                        ("★ Butterfly Knife | Fade", "gold")
+                    ]
+                }
+            }
+        }
+        save_custom_cases(sample_cases)
+
+    try:
+        with open(CUSTOM_CASES_FILE, "r", encoding="utf-8") as f:
+            CUSTOM_CASES = json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load custom cases from '{CUSTOM_CASES_FILE}': {e}")
+        CUSTOM_CASES = {}
+
+    return CUSTOM_CASES
+
+def save_custom_cases(cases_dict: dict):
+    """Saves custom cases dictionary to custom_cases.json atomically."""
+    global CUSTOM_CASES
+    CUSTOM_CASES = cases_dict
+    try:
+        tmp_file = f"{CUSTOM_CASES_FILE}.tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(CUSTOM_CASES, f, indent=4, ensure_ascii=False)
+        os.replace(tmp_file, CUSTOM_CASES_FILE)
+    except Exception as e:
+        print(f"Warning: Could not save custom cases: {e}")
+
+# Initialize custom cases
+load_custom_cases()
+
+def delete_custom_case(case_name: str) -> bool:
+    """Deletes a custom case by name from custom_cases.json and updates in-memory registry."""
+    global CUSTOM_CASES
+    # Safety guard: Never allow deletion of official CS2 cases
+    if case_name in CASES:
+        return False
+
+    load_custom_cases()
+    if case_name in CUSTOM_CASES:
+        del CUSTOM_CASES[case_name]
+        save_custom_cases(CUSTOM_CASES)
+        return True
+    return False
+
+def get_case(case_name: str) -> dict:
+    """Returns case data from either official CASES or CUSTOM_CASES."""
+    if case_name in CASES:
+        return CASES[case_name]
+    return CUSTOM_CASES.get(case_name)
+
+def get_all_known_items() -> dict:
+    """Aggregates all unique skins across all cases organized by rarity."""
+    unique_by_rarity = {r: set() for r in config.RARITIES}
+    for c in CASES.values():
+        for r, items_list in c.get("items", {}).items():
+            if r in unique_by_rarity:
+                for name, color in items_list:
+                    unique_by_rarity[r].add((name, color))
+
+    # Convert sets back to sorted lists
+    return {r: sorted(list(s)) for r, s in unique_by_rarity.items()}
+
+def calculate_custom_case_ev(case_items: dict, margin_multiplier: float = 1.10) -> tuple[float, float, dict, str, dict]:
+    """
+    Calculates the statistical Expected Value (EV), final automated case price,
+    individual tier contributions, volatility risk rating, and dynamically scaled odds.
+    Returns: (base_ev, final_case_price, tier_contributions, risk_rating, scaled_odds)
+    """
+    has_any_items = any(bool(case_items.get(r)) for r in config.RARITIES)
+    if not has_any_items:
+        return 0.0, 0.0, {r: 0.0 for r in config.RARITIES}, "N/A", dict(config.RARITY_CHANCES)
+
+    scaled_odds, tier_avg_prices, scale_factors = calculate_scaled_tier_odds(case_items)
+
+    base_ev = 0.0
+    tier_contributions = {}
+    for r in config.RARITIES:
+        avg_p = tier_avg_prices.get(r, 0.0)
+        odds = scaled_odds.get(r, 0.0)
+        contrib = avg_p * odds
+        tier_contributions[r] = round(contrib, 2)
+        base_ev += contrib
+
+    base_ev = round(base_ev, 2)
+    final_price = round(base_ev * margin_multiplier, 2)
+
+    # Volatility / Risk Rating calculation
+    # Evaluates EV concentration in top tiers or high-value jackpot items
+    high_tier_contrib = tier_contributions.get("Covert", 0.0) + tier_contributions.get("Rare Special", 0.0)
+    high_tier_ratio = (high_tier_contrib / base_ev) if base_ev > 0 else 0.0
+    gold_avg = tier_avg_prices.get("Rare Special", 0.0)
+
+    if high_tier_ratio >= 0.50 or gold_avg >= 600.0:
+        risk_rating = "🔥 High Volatility / Degen"
+    elif high_tier_ratio >= 0.28 or gold_avg >= 200.0:
+        risk_rating = "⚖️ Medium Risk / Balanced"
+    else:
+        risk_rating = "🛡️ Safe / Low Risk"
+
+    return base_ev, final_price, tier_contributions, risk_rating, scaled_odds

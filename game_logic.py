@@ -2,7 +2,8 @@ import random
 from typing import Optional, List, Dict, Tuple
 import config
 from models import Item, GameStats, roll_float, float_to_quality
-from cases import CASES
+from cases import CASES, get_case
+from item_prices import get_item_market_price
 from storage import StorageManager
 
 class GameManager:
@@ -39,19 +40,20 @@ class GameManager:
         """Calculates value including prestige level and permanent perk sell bonuses."""
         return item.get_value(self.prestige_level, self.perks.get("sell_bonus", 0.0))
 
-    def roll_rarity(self) -> str:
-        """Weighted probability drop roll based on CS2 odds plus permanent luck perks."""
+    def roll_rarity(self, custom_odds: Optional[Dict[str, float]] = None) -> str:
+        """Weighted probability drop roll based on CS2 odds (or scaled custom odds) plus permanent luck perks."""
         r = random.random()
         covert_luck = self.perks.get("covert_luck", 0.0)
         gold_luck = self.perks.get("gold_luck", 0.0)
 
+        base_odds = custom_odds if custom_odds else config.RARITY_CHANCES
         # Dynamic chances adjusted for perks
         chances = {
-            "Mil-Spec": max(0.20, config.RARITY_CHANCES["Mil-Spec"] - covert_luck - gold_luck),
-            "Restricted": config.RARITY_CHANCES["Restricted"],
-            "Classified": config.RARITY_CHANCES["Classified"],
-            "Covert": config.RARITY_CHANCES["Covert"] + covert_luck,
-            "Rare Special": config.RARITY_CHANCES["Rare Special"] + gold_luck
+            "Mil-Spec": max(0.01, base_odds["Mil-Spec"] - covert_luck - gold_luck),
+            "Restricted": base_odds["Restricted"],
+            "Classified": base_odds["Classified"],
+            "Covert": base_odds["Covert"] + covert_luck,
+            "Rare Special": base_odds["Rare Special"] + gold_luck
         }
 
         cum = 0.0
@@ -63,15 +65,15 @@ class GameManager:
 
     def open_case(self, case_name: str, skip_auto_sell: bool = False, delay_stats: bool = False) -> Optional[Item]:
         """
-        Deducts Case Price + Key Price ($2.49), generates item with float, quality,
-        applies case-based price multiplier. If delay_stats=True, stats and auto-sell
-        are deferred until animation completion via finalize_opened_item.
+        Deducts Case Price (pure EV + House Margin, no key fees), generates item with float, quality,
+        applies case-based price multiplier and individual item market valuation. If delay_stats=True,
+        stats and auto-sell are deferred until animation completion via finalize_opened_item.
         """
-        case_data = CASES.get(case_name)
+        case_data = get_case(case_name)
         if not case_data:
             return None
 
-        total_cost = case_data["price"] + config.KEY_PRICE
+        total_cost = round(float(case_data["price"]), 2)
         if self.balance < total_cost:
             return None
 
@@ -80,7 +82,8 @@ class GameManager:
         self.stats.money_spent += total_cost
         self.stats.money_spent = round(self.stats.money_spent, 2)
 
-        rarity = self.roll_rarity()
+        custom_odds = case_data.get("odds")
+        rarity = self.roll_rarity(custom_odds=custom_odds)
         pool = case_data["items"][rarity]
         name, color = random.choice(pool)
 
@@ -91,9 +94,10 @@ class GameManager:
         wear_float = roll_float()
         quality = float_to_quality(wear_float)
 
-        # Kasti-põhine hinna kordaja
+        # Kasti-põhine hinna kordaja ja individuaalne turuhind
         case_multiplier = float(case_data.get("multiplier", 1.0))
-        base_price = round(config.SELL_PRICES.get(rarity, 5.0) * case_multiplier, 2)
+        item_market_price = get_item_market_price(name, rarity)
+        base_price = round(item_market_price * case_multiplier, 2)
 
         item = Item(
             name=name,
@@ -191,12 +195,18 @@ class GameManager:
         if len(selected_indices) != 10:
             return False, "You must select exactly 10 items.", None
 
+        # Ensure all indices are distinct unique items
+        unique_indices = sorted(list(set(selected_indices)), reverse=True)
+        if len(unique_indices) != 10:
+            return False, "All 10 trade-up items must be distinct unique selections.", None
+
         # Check bounds
-        for idx in selected_indices:
+        for idx in unique_indices:
             if idx < 0 or idx >= len(self.inventory):
                 return False, "Invalid item selection.", None
 
-        items = [self.inventory[i] for i in selected_indices]
+        # Retrieve selected item objects
+        items = [self.inventory[i] for i in unique_indices]
         rarity = items[0].rarity
 
         # Check all have same rarity
@@ -245,7 +255,8 @@ class GameManager:
         wear_float = roll_float()
         quality = float_to_quality(wear_float)
         case_multiplier = float(CASES.get(chosen_case, {}).get("multiplier", 1.0))
-        base_price = round(config.SELL_PRICES.get(next_rarity, 5.0) * case_multiplier, 2)
+        item_market_price = get_item_market_price(name, next_rarity)
+        base_price = round(item_market_price * case_multiplier, 2)
 
         new_item = Item(
             name=name,
@@ -258,9 +269,9 @@ class GameManager:
             base_price=base_price
         )
 
-        # Remove used items in reverse index order
-        for idx in sorted(selected_indices, reverse=True):
-            self.inventory.pop(idx)
+        # Safe removal by object identity matching to prevent index shift corruption
+        item_ids_to_remove = set(id(it) for it in items)
+        self.inventory = [it for it in self.inventory if id(it) not in item_ids_to_remove]
 
         # Add new item
         self.inventory.append(new_item)
@@ -386,7 +397,10 @@ class GameManager:
         return False
 
     def save(self, filename: str = config.SAVE_FILE):
-        StorageManager.save_game(self, filename)
+        try:
+            StorageManager.save_game(self, filename)
+        except Exception as e:
+            print(f"GameManager save error: {e}")
 
     def load(self, filename: str = config.SAVE_FILE) -> bool:
         return StorageManager.load_game(self, filename)

@@ -32,17 +32,6 @@ class InventoryView(ctk.CTkFrame):
         )
         title.pack(side="left")
 
-        tradeup_btn = ctk.CTkButton(
-            header,
-            text="🔄 Trade-Up Contract",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color=ACCENT_BLUE,
-            hover_color=ACCENT_HOVER,
-            corner_radius=6,
-            command=self.on_open_tradeup
-        )
-        tradeup_btn.pack(side="right")
-
         # Filters & Sorting Card
         filter_card = ctk.CTkFrame(container, fg_color=CARD_BG, corner_radius=8)
         filter_card.pack(fill="x", pady=(0, 10), padx=2)
@@ -136,6 +125,11 @@ class InventoryView(ctk.CTkFrame):
         self.summary_label.pack(side="right")
 
     def refresh_list(self):
+        # Cancel any pending async chunk renders from a previous refresh
+        if hasattr(self, '_render_job') and self._render_job is not None:
+            self.after_cancel(self._render_job)
+            self._render_job = None
+
         # Clear existing rows
         for child in self.items_scroll.winfo_children():
             child.destroy()
@@ -178,13 +172,30 @@ class InventoryView(ctk.CTkFrame):
             )
             empty_lbl.pack(pady=40)
         else:
-            for orig_idx, item in filtered:
+            # Chunked async rendering: first batch immediately, rest in async chunks
+            first_batch = 15
+            chunk_size = 10
+            for orig_idx, item in filtered[:first_batch]:
                 self._create_item_row(orig_idx, item)
+
+            remaining = filtered[first_batch:]
+            if remaining:
+                self._render_remaining_chunks(remaining, chunk_size)
 
         # Update summary
         total_items = len(self.game.inventory)
         total_val = sum(self.game.get_item_value(it) for it in self.game.inventory)
         self.summary_label.configure(text=f"Total: {total_items} items  |  Value: ${total_val:,.2f}")
+
+    def _render_remaining_chunks(self, remaining, chunk_size):
+        """Render remaining items in small async chunks to keep UI responsive."""
+        if not remaining:
+            self._render_job = None
+            return
+        batch = remaining[:chunk_size]
+        for orig_idx, item in batch:
+            self._create_item_row(orig_idx, item)
+        self._render_job = self.after(1, lambda: self._render_remaining_chunks(remaining[chunk_size:], chunk_size))
 
     def _create_item_row(self, orig_idx: int, item):
         val = self.game.get_item_value(item)
