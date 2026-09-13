@@ -59,8 +59,8 @@ def build_executable():
         "--onedir",
         "--windowed",
         "--name", "CS2_Case_Opening_Simulator",
-        "--add-data", "assets;assets",
-        "--add-data", "sounds;sounds",
+        "--contents-directory", "_internal",
+        "--add-data", "assets;_internal/assets",
         "--add-data", "custom_cases.json;.",
     ]
     cmd.extend(ctk_args)
@@ -73,17 +73,32 @@ def build_executable():
     result = subprocess.run(cmd)
 
     if result.returncode == 0:
-        dist_folder = os.path.join(base_dir, "dist", "CS2_Case_Opening_Simulator")
+        dist_dir = os.path.join(base_dir, "dist")
+        dist_folder = os.path.join(dist_dir, "CS2_Case_Opening_Simulator")
         exe_path = os.path.join(dist_folder, "CS2_Case_Opening_Simulator.exe")
+        zip_path = os.path.join(dist_dir, "CS2_Case_Opening_Simulator.zip")
+
+        # Ensure custom_cases.json is present in the distribution root
+        root_custom_cases = os.path.join(dist_folder, "custom_cases.json")
+        if not os.path.exists(root_custom_cases):
+            shutil.copy2(custom_cases_file, root_custom_cases)
 
         print("\n" + "=" * 65)
         print("  BUILD SUCCESSFUL!  ")
         print("=" * 65)
         print(f"[OK] Output directory : {dist_folder}")
         print(f"[OK] Executable binary: {exe_path}")
-        print("\nTo distribute:")
-        print("Simply zip and share the entire 'dist/CS2_Case_Opening_Simulator' folder.")
-        print("Users can double-click 'CS2_Case_Opening_Simulator.exe' to play!")
+
+        # 6. Create clean ZIP archive of the distribution
+        print("\n[+] Creating ZIP archive: CS2_Case_Opening_Simulator.zip...")
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        shutil.make_archive(
+            base_name=os.path.join(dist_dir, "CS2_Case_Opening_Simulator"),
+            format="zip",
+            root_dir=dist_folder
+        )
+        print(f"[OK] ZIP archive generated: {zip_path}")
         print("=" * 65)
     else:
         print(f"\n[X] Build failed with exit code: {result.returncode}")

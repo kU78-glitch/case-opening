@@ -17,10 +17,19 @@ def get_resource_path(relative_path: str) -> str:
     if os.path.exists(target):
         return target
 
-    # Check inside 'assets' directory if relative_path was requested
+    # Check inside 'assets' directory
     assets_target = os.path.join(base_path, "assets", relative_path)
     if os.path.exists(assets_target):
         return assets_target
+
+    # Check inside '_internal' (when --contents-directory "_internal" is used)
+    internal_target = os.path.join(base_path, "_internal", relative_path)
+    if os.path.exists(internal_target):
+        return internal_target
+
+    internal_assets = os.path.join(base_path, "_internal", "assets", relative_path)
+    if os.path.exists(internal_assets):
+        return internal_assets
 
     # Fallback to project root directory
     root_dir = os.path.dirname(os.path.abspath(__file__))
