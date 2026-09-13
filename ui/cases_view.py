@@ -441,9 +441,27 @@ class CasesView(ctk.CTkFrame):
         )
         tier_breakdown_label.pack(fill="x", padx=12, pady=(0, 6), anchor="w")
 
-        # Scrollable Item Selection Container
-        items_scroll = ctk.CTkScrollableFrame(self.creator_modal, fg_color="#0b0d11", corner_radius=8)
+        # Scrollable Item Selection Container with solid background
+        items_scroll = ctk.CTkScrollableFrame(self.creator_modal, fg_color="#0e1017", corner_radius=8)
         items_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+
+        # Hook canvas scroll & configure events to eliminate ghosting / pixel tearing
+        try:
+            canvas = items_scroll._parent_canvas
+            orig_yview = canvas.yview
+            def smooth_yview(*args):
+                res = orig_yview(*args)
+                canvas.update_idletasks()
+                return res
+            canvas.yview = smooth_yview
+
+            def force_canvas_refresh(event=None):
+                canvas.update_idletasks()
+
+            canvas.bind("<Configure>", force_canvas_refresh, add="+")
+            canvas.bind("<MouseWheel>", lambda e: canvas.after_idle(canvas.update_idletasks), add="+")
+        except Exception:
+            pass
 
         selected_items_by_rarity = {r: set() for r in config.RARITIES}
         current_case_price = [0.0]
@@ -464,29 +482,29 @@ class CasesView(ctk.CTkFrame):
         def save_new_case():
             name = case_name_entry.get().strip()
             if not name:
-                status_lbl.configure(text="Please enter a valid Case Name.", text_color="#ef4444")
+                status_lbl.configure(text="Please enter a case name!", text_color="#ef4444")
                 return
 
-            # Verify every rarity has at least 1 item
-            case_items = {}
-            for r in config.RARITIES:
-                pool = list(selected_items_by_rarity.get(r, []))
-                if not pool:
-                    status_lbl.configure(text=f"Please select at least 1 item for '{r}'.", text_color="#ef4444")
-                    return
-                case_items[r] = pool
+            if name in CASES:
+                status_lbl.configure(text="Cannot overwrite official CS2 cases!", text_color="#ef4444")
+                return
 
             price = current_case_price[0]
             if price <= 0.0:
-                status_lbl.configure(text="Cannot save a case with $0.00 price. Select items first.", text_color="#ef4444")
+                status_lbl.configure(text="Cannot save a free/zero-value case!", text_color="#ef4444")
+                return
+
+            all_tiers_filled = all(len(selected_items_by_rarity[r]) > 0 for r in config.RARITIES)
+            if not all_tiers_filled:
+                status_lbl.configure(text="Please select at least one item for all rarity tiers!", text_color="#ef4444")
                 return
 
             custom_dict = load_custom_cases()
             custom_dict[name] = {
                 "price": price,
-                "multiplier": 1.0,
-                "items": case_items,
-                "odds": current_scaled_odds[0]
+                "multiplier": 1.2,
+                "odds": current_scaled_odds[0],
+                "items": {r: list(selected_items_by_rarity[r]) for r in config.RARITIES}
             }
             save_custom_cases(custom_dict)
 
@@ -589,8 +607,12 @@ class CasesView(ctk.CTkFrame):
             ).pack(side="left", padx=10, pady=4)
 
             pool = known_items.get(rarity, [])
-            items_grid = ctk.CTkFrame(items_scroll, fg_color="transparent")
-            items_grid.pack(fill="x", padx=10, pady=(0, 4))
+            items_grid = ctk.CTkFrame(items_scroll, fg_color="#12151c", corner_radius=6)
+            items_grid.pack(fill="x", padx=6, pady=(0, 6))
+
+            # Configure grid columns with equal weight
+            items_grid.grid_columnconfigure(0, weight=1)
+            items_grid.grid_columnconfigure(1, weight=1)
 
             # Render checkbox with distinct individual market price badges for each skin
             for idx, (skin_name, color) in enumerate(pool[:12]):
@@ -621,18 +643,25 @@ class CasesView(ctk.CTkFrame):
                 else:
                     badge_color = "#d1d5db"  # light muted
 
+                # Solid background item cell to prevent transparent text ghosting/tearing
+                item_cell = ctk.CTkFrame(items_grid, fg_color="#151922", corner_radius=4, height=28)
+                item_cell.grid(row=idx // 2, column=idx % 2, sticky="ew", padx=6, pady=3)
+                item_cell.pack_propagate(False)
+
                 cb = ctk.CTkCheckBox(
-                    items_grid,
+                    item_cell,
                     text=full_display_text,
                     variable=cb_var,
                     font=ctk.CTkFont(family="Segoe UI", size=11),
                     text_color=badge_color,
-                    checkbox_height=18,
-                    checkbox_width=18,
-                    corner_radius=4,
+                    fg_color="#3b82f6",
+                    hover_color="#2563eb",
+                    checkbox_height=16,
+                    checkbox_width=16,
+                    corner_radius=3,
                     command=make_toggle(rarity, skin_name, color, cb_var)
                 )
-                cb.grid(row=idx // 2, column=idx % 2, sticky="w", padx=10, pady=3)
+                cb.pack(side="left", padx=8, pady=4, fill="x", expand=True)
 
         # Initialize dynamic calculation
         update_live_ev()
