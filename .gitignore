@@ -1,9 +1,10 @@
 __pycache__/
 *.pyc
+*.json
+*.dat
 save.json
 savegame.json
 save.dat
-*.dat
 *.tmp
 debug_*.json
 build/
